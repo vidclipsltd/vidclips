@@ -21,6 +21,7 @@ from typing import Any
 from app.core.exceptions import ExportError
 from app.core.logging_config import get_logger
 from app.pipelines.video_pipeline import PipelineRun
+from app.pipelines.timeline_builder import build_timeline_template
 
 logger = get_logger(__name__)
 
@@ -73,35 +74,11 @@ def export_run(run: PipelineRun, output_dir: Path | None = None) -> dict[str, st
         _write_json(path, payload)
         written[filename.replace(".json", "")] = str(path)
 
-    # --- timeline.json: unified view keyed by scene boundaries ---
-    scene_result = run.results.get("scene_detection")
-    scenes = scene_result.data.get("scenes", []) if scene_result and scene_result.status == "ok" else []
+    # --- timeline.json: reusable editable template ---
     timeline_path = output_dir / "timeline.json"
-    _write_json(timeline_path, {"video": run.video_path, "scenes": scenes})
+    timeline = build_timeline_template(run)
+    _write_json(timeline_path, timeline)
     written["timeline"] = str(timeline_path)
-
-    # --- keyframes.json: derived from camera_motion transitions (tag changes) ---
-    camera_result = run.results.get("camera_motion")
-    keyframes = []
-    if camera_result and camera_result.status == "ok":
-        prev_tags = None
-        for frame in camera_result.data.get("frames", []):
-            tags = tuple(frame.get("motion_tags", []))
-            if tags != prev_tags:
-                keyframes.append({"frame": frame["frame"], "timestamp_sec": frame["timestamp_sec"], "motion_tags": list(tags)})
-                prev_tags = tags
-    keyframes_path = output_dir / "keyframes.json"
-    _write_json(keyframes_path, {"video": run.video_path, "keyframes": keyframes})
-    written["keyframes"] = str(keyframes_path)
-
-    # --- transitions.json: scene boundaries treated as hard-cut transitions ---
-    transitions = [
-        {"type": "cut", "at_sec": s["start_sec"], "from_scene": s["scene_index"] - 1, "to_scene": s["scene_index"]}
-        for s in scenes if s["scene_index"] > 0
-    ]
-    transitions_path = output_dir / "transitions.json"
-    _write_json(transitions_path, {"video": run.video_path, "transitions": transitions})
-    written["transitions"] = str(transitions_path)
 
     # --- project.json: top-level manifest referencing every other file ---
     project = {
