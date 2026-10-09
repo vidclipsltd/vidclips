@@ -61,13 +61,13 @@ class Settings(BaseSettings):
     enable_scene_detection: bool = True
     enable_camera_motion: bool = True
     enable_optical_flow: bool = True
-    enable_object_detection: bool = True
-    enable_segmentation: bool = True
-    enable_face_pose: bool = True
+    enable_object_detection: bool = False  # enable on a machine with more RAM / a GPU
+    enable_segmentation: bool = False  # per-frame masks are memory-intensive
+    enable_face_pose: bool = False  # MediaPipe models need more memory
     enable_ocr: bool = False
-    enable_depth: bool = True
+    enable_depth: bool = False  # depth model is too heavy for the 512 MB free host
     enable_color_grading: bool = True
-    enable_audio: bool = True
+    enable_audio: bool = False  # Whisper/pyannote/librosa exceed the free host memory
 
     # ---- API ----
     api_host: str = "0.0.0.0"
