@@ -7,6 +7,7 @@ import { getJob } from "../services/api";
 import { useEditor } from "../context/EditorContext";
 
 export function useAnalysisData() {
+  const baseUrl = (import.meta.env.VITE_API_URL || "https://vidclips-xf5z.onrender.com").replace(/\/$/, "");
   const {
     jobId,
     jobStatus,
@@ -20,12 +21,12 @@ export function useAnalysisData() {
       if (job.status === "completed" && job.output_files) {
         // Load the project.json manifest
         const projectFile = job.output_files?.project;
+        let projectData = null;
         if (projectFile) {
           // The backend serves static files from outputs directory
-          const baseUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
           const response = await fetch(`${baseUrl}/outputs/metadata/${runId}/project.json`);
           if (response.ok) {
-            const projectData = await response.json();
+            projectData = await response.json();
             setAnalysisData(projectData);
           }
         }
