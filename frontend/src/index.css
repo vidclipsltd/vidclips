@@ -383,3 +383,80 @@ body:has(.landing-shell),
   height: auto;
   overflow: visible !important;
 }
+
+
+/* ─── Editor layout refinement: toolbar, inspector tabs, panel sizing ─── */
+.vidclips-editor { min-width: 0; }
+.vidclips-editor > header { position: relative; z-index: 20; }
+.vidclips-editor > header > div:first-child {
+  min-height: 64px;
+  height: auto;
+  gap: 14px;
+  padding: 10px 16px;
+}
+.vidclips-editor > header > div:first-child > div:first-child {
+  min-width: 170px;
+  flex-shrink: 0;
+}
+.vidclips-editor > header > div:first-child > div:nth-child(2) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.vidclips-editor > header > div:first-child > div:nth-child(3) {
+  min-width: 0;
+  gap: 8px;
+  flex-shrink: 1;
+}
+.vidclips-editor > header > div:first-child input[placeholder="Search..."] {
+  width: clamp(90px, 12vw, 180px);
+  min-width: 0;
+}
+.vidclips-editor > header > div:nth-child(2) {
+  min-height: 34px;
+  height: auto;
+  padding: 0 16px;
+  gap: clamp(12px, 2vw, 25px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vidclips-editor > header > div:nth-child(2)::-webkit-scrollbar { display: none; }
+.vidclips-editor > header > div:nth-child(2) > button { flex-shrink: 0; }
+.vidclips-editor > header button { white-space: nowrap; }
+.vidclips-editor aside { min-width: 0; }
+.inspector-slide { min-width: 0; }
+.inspector-slide > aside { width: 100% !important; min-width: 0; }
+.inspector-slide [role="tablist"] {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.inspector-slide [role="tablist"] > * { flex-shrink: 0; }
+.inspector-slide aside > div:first-child { flex-shrink: 0; }
+.inspector-slide aside > div:last-child { min-width: 0; }
+.sidebar-slide > aside { width: 100% !important; }
+.vidclips-editor main { min-width: 0; }
+.vidclips-editor main > div { min-width: 0; }
+.vidclips-editor .panel-toggle { white-space: nowrap; }
+.vidclips-editor button { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 1100px) {
+  .vidclips-editor > header > div:first-child { flex-wrap: wrap; gap: 9px 12px; }
+  .vidclips-editor > header > div:first-child > div:first-child { min-width: 145px; }
+  .vidclips-editor > header > div:first-child > div:nth-child(2) { order: 3; flex-basis: 100%; justify-content: flex-start; overflow-x: auto; }
+  .vidclips-editor > header > div:first-child > div:nth-child(3) { margin-left: auto; }
+}
+@media (max-width: 700px) {
+  .vidclips-editor > header > div:first-child { padding: 8px 10px; }
+  .vidclips-editor > header > div:first-child > div:first-child p { display: none; }
+  .vidclips-editor > header > div:first-child > div:first-child { min-width: 0; }
+  .vidclips-editor > header > div:first-child > div:nth-child(3) > div { display: none; }
+  .vidclips-editor > header > div:nth-child(2) { padding: 0 10px; }
+  .inspector-slide { position: absolute; right: 0; top: 0; bottom: 0; z-index: 15; max-width: 86vw; }
+}
