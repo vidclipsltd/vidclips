@@ -366,3 +366,20 @@ video {
   .mock-workspace { grid-template-columns:54px minmax(0,1fr) 58px; }.mock-sidebar-label,.inspector-title { font-size:5px; }.mock-nav { font-size:6px; }.mock-nav svg { width:10px; }
   .mock-preview { height:105px; }.mock-project { display:none; }.mock-menu { gap:7px; }
 }
+
+
+/* Landing page must scroll; the editor alone remains viewport-locked. */
+html:has(.landing-shell),
+body:has(.landing-shell),
+#root:has(.landing-shell) {
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.landing-shell {
+  display: block;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible !important;
+}
