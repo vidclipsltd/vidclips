@@ -12,6 +12,7 @@ opencv-python-headless>=4.10
 numpy>=1.26
 scenedetect[opencv]>=0.6.4
 ultralytics>=8.2      # YOLOv8 detection + ByteTrack
+lap>=0.5.12           # ByteTrack dependency; install at build time, not during a job
 mediapipe>=0.10        # face / pose / hands / selfie segmentation
 easyocr>=1.7           # OCR
 
