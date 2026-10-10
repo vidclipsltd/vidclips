@@ -47,7 +47,8 @@ ipcMain.handle("vidclips:analyze-video", async (_event, filePath) => {
   }
   throw new Error("Analysis is taking longer than 9 minutes. The job may still be running; check the backend before resubmitting.");
 });
-\nipcMain.handle("vidclips:open-media", async () => {
+
+ipcMain.handle("vidclips:open-media", async () => {
   const result = await dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: videoFilters });
   if (result.canceled) return [];
   return result.filePaths.map((filePath) => ({ path: filePath, name: path.basename(filePath), url: registerMediaPath(filePath) }));
