@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Film, FolderOpen, Plus, Play, Pause, Scissors, Trash2, ChevronLeft,
@@ -16,6 +16,7 @@ function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null);
+  const [analysisProgress, setAnalysisProgress] = useState("");
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
   const [notice, setNotice] = useState("Desktop workspace ready");
@@ -23,6 +24,14 @@ function App() {
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const nextClipIdRef = useRef(1);
+
+  useEffect(() => {
+    if (!window.vidclips?.onAnalysisProgress) return undefined;
+    return window.vidclips.onAnalysisProgress((message) => {
+      setAnalysisProgress(message);
+      if (/Starting analyzer:|Collected result:|analysis started|Selected analyzers/i.test(message)) setNotice("AI: " + message);
+    });
+  }, []);
 
   const selectedClip = clips.find((clip) => clip.id === selected);
   const totalDuration = Math.max(20, ...clips.map((clip) => clip.start + clip.duration));
@@ -190,7 +199,8 @@ function App() {
       return;
     }
     setAnalyzing(true);
-    setNotice("Analyzing video locally on this PC using the CPU. Your video is not uploaded…");
+    setAnalysisProgress("Starting local Python AI pipeline…");
+    setNotice("Analyzing locally on this PC using the CPU. Your video is not uploaded…");
     try {
       const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath);
       const template = result?.timeline?.template;
@@ -208,7 +218,10 @@ function App() {
       setSelected(sceneClips[0]?.id ?? null);
       setPlayhead(sceneClips[0]?.start ?? 0);
       setAnalysisResults(template);
-      setNotice("Local analysis complete: " + sceneClips.length + " editable scene clips created on this PC. No upload.");
+      const statuses = Object.entries(result.analyzers || {}).map(([name, info]) => name + ": " + info.status + (info.error ? " (" + info.error + ")" : ""));
+      const extraTracks = (template?.template?.tracks || []).filter((track) => track.type !== "video").length;
+      setAnalysisProgress("Finished on CPU · " + (result.outputDir || "results saved locally"));
+      setNotice("Local Python analysis complete: " + sceneClips.length + " editable scene clips. " + statuses.join(" · ") + (extraTracks ? " · Additional analysis tracks are available in the result JSON." : ""));
     } catch (error) {
       setNotice("Analysis failed: " + (error?.message || String(error)));
     } finally {
@@ -303,6 +316,13 @@ function App() {
               <div className="playhead-line" style={{ left: 176 + playhead * pixelsPerSecond }}><div className="playhead-cap" /></div>
             </div></div>
             <div className="timeline-footer"><span className="notice">{notice}</span><span>Playhead <strong>{formatTime(playhead)}</strong></span><button onClick={() => addClip("A1")}><Plus size={14} /> Add audio track clip</button></div>
+            {analysisResults && <div className="analysis-results" aria-live="polite">
+              <strong>Local AI results</strong>
+              <span>{analysisResults.template?.markers?.scenes?.length || clips.filter((clip) => clip.aiGenerated).length} scene markers</span>
+              <span>{analysisResults.template?.markers?.beats?.length || 0} audio beat markers</span>
+              <span>{(analysisResults.template?.tracks || []).filter((track) => track.type === "effects").flatMap((track) => track.items || []).length} detected effects</span>
+              <span className="analysis-path">{analysisProgress}</span>
+            </div>}
           </section>
         </main>
       </div>
