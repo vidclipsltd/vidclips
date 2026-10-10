@@ -154,10 +154,10 @@ function App() {
       const project = await window.vidclips.openProject();
       if (!project) return;
       if (!Array.isArray(project.clips)) throw new Error("This file is not a valid VidClips project.");
-      const restored = project.clips.map((clip) => {
+      const restored = await Promise.all(project.clips.map(async (clip) => {
         if (!clip.mediaPath) return { ...clip, mediaUrl: null };
-        return { ...clip, mediaUrl: window.vidclips.mediaUrlFromPath(clip.mediaPath) };
-      });
+        return { ...clip, mediaUrl: await window.vidclips.mediaUrlFromPath(clip.mediaPath) };
+      }));
       setClips(restored);
       setProjectName(project.projectName || "Untitled project");
       setPlayhead(Number(project.playhead) || 0);
