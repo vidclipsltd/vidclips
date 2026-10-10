@@ -46,8 +46,9 @@ function App() {
       file
     }));
     setMediaFiles((items) => [...items, ...imported]);
-    videos.forEach((file) => {
-      const url = URL.createObjectURL(file);
+    imported.forEach((item) => {
+      const file = item.file;
+      const url = item.url;
       const probe = document.createElement("video");
       probe.preload = "metadata";
       probe.src = url;
