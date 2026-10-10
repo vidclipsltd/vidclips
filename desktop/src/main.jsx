@@ -212,9 +212,28 @@ function App() {
         const sourceIn = Number(scene.source_start ?? scene.start ?? 0);
         const sourceOut = Number(scene.source_end ?? scene.end ?? original.duration);
         const duration = Math.max(0.05, sourceOut - sourceIn);
-        return { ...original, id: nextClipIdRef.current++, name: "AI Scene " + (index + 1), start: Number(scene.start ?? sourceIn), duration, sourceIn, sourceOut, color: index % 2 ? "teal" : "blue", aiGenerated: true };
+        return { ...original, id: nextClipIdRef.current++, name: "AI Scene " + (index + 1), track: "V1", start: Number(scene.start ?? sourceIn), duration, sourceIn, sourceOut, color: index % 2 ? "teal" : "blue", aiGenerated: true };
       });
-      setClips((items) => [...items.filter((clip) => clip.id !== original.id), ...sceneClips]);
+      const templateTracks = template?.template?.tracks || [];
+      const effectsTrack = templateTracks.find((track) => track.type === "effects");
+      const transitionsTrack = templateTracks.find((track) => track.type === "transitions");
+      const effectClips = (effectsTrack?.items || []).filter((item) => Number(item.end) > Number(item.start)).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "AI " + String(item.type || "Effect").replace(/_/g, " ") + " " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.15, (Number(item.end) || 0) - (Number(item.start) || 0)),
+        color: "teal", aiGenerated: true, aiType: item.type, aiData: item
+      }));
+      const transitionClips = (transitionsTrack?.items || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "AI " + String(item.type || "Cut") + " " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.12, Number(item.duration) || 0.12),
+        color: "purple", aiGenerated: true, aiType: "transition", aiData: item
+      }));
+      const beatValues = template?.template?.markers?.beats || [];
+      const beatClips = beatValues.map((beat, index) => {
+        const at = typeof beat === "number" ? beat : Number(beat?.time_sec ?? beat?.timestamp_sec ?? beat?.start_sec ?? beat?.time ?? beat?.start ?? 0);
+        return { id: nextClipIdRef.current++, name: "Beat " + (index + 1), track: "A1", start: Math.max(0, at), duration: 0.12, color: "green", aiGenerated: true, aiType: "beat" };
+      }).filter((clip) => Number.isFinite(clip.start));
+      const overlayClips = [...effectClips, ...transitionClips, ...beatClips];
+      setClips((items) => [...items.filter((clip) => clip.id !== original.id && !clip.aiGenerated), ...sceneClips, ...overlayClips]);
       setSelected(sceneClips[0]?.id ?? null);
       setPlayhead(sceneClips[0]?.start ?? 0);
       setAnalysisResults(template);
