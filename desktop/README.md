@@ -33,7 +33,7 @@ py -3.11 -m venv .venv
 
 The app defaults to CPU analysis: scene cuts, camera motion, and color analysis. The sidebar lets you select optional local analyzers for object detection (YOLO), face/pose/hands, person segmentation, depth (MiDaS), and audio/beat/speech analysis. OCR is intentionally not included. Heavy analyzers may be slow on CPU; first use may download model weights. Audio diarization may require a Hugging Face account/token and model-license acceptance; it can fail independently while the rest of the results are still returned.
 
-Analysis JSON is saved under the app's user-data folder in a writable location. In development, the repository's normal output structure is used according to the active environment configuration. Model caches are kept in the app's user-data area when launched by Electron.
+Analysis JSON and model caches are saved under Electron's writable user-data folder (in development and packaged runs), so the installed app does not try to write inside Program Files. The root Python CLI, when run manually outside Electron, uses the repository's configured outputs directory.
 
 ## Run in development
 
