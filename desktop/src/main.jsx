@@ -17,6 +17,7 @@ function App() {
   const [exporting, setExporting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [analysisProgress, setAnalysisProgress] = useState("");
+  const [analysisOptions, setAnalysisOptions] = useState(["scene_detection", "camera_motion", "color_grading"]);
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
   const [notice, setNotice] = useState("Desktop workspace ready");
@@ -202,7 +203,8 @@ function App() {
     setAnalysisProgress("Starting local Python AI pipeline…");
     setNotice("Analyzing locally on this PC using the CPU. Your video is not uploaded…");
     try {
-      const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath);
+      if (!analysisOptions.length) throw new Error("Select at least one local analyzer.");
+      const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath, { analyzers: analysisOptions });
       const template = result?.timeline?.template;
       const sourceTrack = template?.tracks?.find((track) => track.type === "video");
       const sourceCuts = sourceTrack?.clips || [];
@@ -280,7 +282,21 @@ function App() {
         <aside className="sidebar">
           <button className="nav-item active"><FolderOpen size={17} /> Media</button>
           <button className="nav-item" onClick={() => setNotice("Effects panel will be added after core timeline editing")}><MonitorPlay size={17} /> Effects</button>
-          <div className="side-section"><div className="section-label">PROJECT MEDIA</div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={importDesktopMedia}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} /></div>
+          <div className="side-section"><div className="section-label">PROJECT MEDIA</div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={importDesktopMedia}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} />
+          <div className="ai-options">
+            <div className="section-label">LOCAL AI ANALYZERS</div>
+            {[
+              ["scene_detection", "Scene cuts"],
+              ["camera_motion", "Camera motion"],
+              ["color_grading", "Color analysis"],
+              ["object_detection", "Object detection (YOLO)"],
+              ["face_pose", "Face / pose / hands"],
+              ["segmentation", "Person segmentation"],
+              ["depth", "Depth estimation (MiDaS)"],
+              ["audio", "Audio / beats / speech"]
+            ].map(([key, label]) => <label key={key} className="ai-option"><input type="checkbox" checked={analysisOptions.includes(key)} onChange={(event) => setAnalysisOptions((items) => event.target.checked ? [...items, key] : items.filter((item) => item !== key))} /><span>{label}</span></label>)}
+            <p>Runs on this PC's CPU. First use may download large AI models; advanced analyzers can be slow.</p>
+          </div></div>
           <div className="sidebar-bottom"><span className="status-dot" /> Desktop app prototype</div>
         </aside>
 
