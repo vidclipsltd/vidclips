@@ -85,9 +85,14 @@ ipcMain.handle("vidclips:analyze-video", async (event, filePath, options = {}) =
     : path.resolve(__dirname, "../..");
   const script = path.join(repoRoot, "scripts", "desktop_analyze_video.py");
   const pythonCandidates = process.platform === "win32"
-    ? (app.isPackaged ? ["python", "py"] : [process.env.VIDCLIPS_PYTHON, path.join(repoRoot, ".venv", "Scripts", "python.exe"), "python", "py"])
-    : [process.env.VIDCLIPS_PYTHON, path.join(repoRoot, ".venv", "bin", "python"), "python3", "python"];
-  const python = pythonCandidates.find(Boolean);
+    ? [process.env.VIDCLIPS_PYTHON, ...(!app.isPackaged ? [path.join(repoRoot, ".venv", "Scripts", "python.exe")] : []), "python", "py"]
+    : [process.env.VIDCLIPS_PYTHON, ...(!app.isPackaged ? [path.join(repoRoot, ".venv", "bin", "python")] : []), "python3", "python"];
+  let python = null;
+  for (const candidate of pythonCandidates) {
+    if (!candidate) continue;
+    if (!candidate.includes(path.sep) && !candidate.includes("/")) { python = candidate; break; }
+    if (await fs.stat(candidate).then((info) => info.isFile()).catch(() => false)) { python = candidate; break; }
+  }
   if (!python) throw new Error("Python 3.11+ was not found. Install Python and the repository requirements, or set VIDCLIPS_PYTHON to your Python executable.");
   if (!await fs.stat(script).then(() => true).catch(() => false)) {
     throw new Error("The local AI pipeline files are missing. In the source checkout, keep the scripts and app folders beside desktop.");
