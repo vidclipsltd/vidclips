@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Film, FolderOpen, Plus, Play, Pause, Scissors, Trash2, ChevronLeft,
@@ -21,11 +21,53 @@ function App() {
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
   const [notice, setNotice] = useState("Desktop workspace ready");
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
 
   const selectedClip = clips.find((clip) => clip.id === selected);
   const totalDuration = Math.max(20, ...clips.map((clip) => clip.start + clip.duration));
   const pixelsPerSecond = 52 * zoom;
   const ticks = useMemo(() => Array.from({ length: Math.ceil(totalDuration / 2) + 1 }, (_, i) => i * 2), [totalDuration]);
+
+  function importMedia(event) {
+    const files = Array.from(event.target.files || []);
+    const videos = files.filter((file) => file.type.startsWith("video/"));
+    if (!videos.length) {
+      setNotice("Choose a video file such as MP4, MOV, or WebM");
+      event.target.value = "";
+      return;
+    }
+    const imported = videos.map((file) => ({
+      id: null,
+      name: file.name.replace(/\\.[^.]+$/, ""),
+      fileName: file.name,
+      url: URL.createObjectURL(file),
+      file
+    }));
+    setMediaFiles((items) => [...items, ...imported]);
+    videos.forEach((file) => {
+      const url = URL.createObjectURL(file);
+      const probe = document.createElement("video");
+      probe.preload = "metadata";
+      probe.src = url;
+      probe.onloadedmetadata = () => {
+        const duration = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 4;
+        const nextId = Math.max(0, ...clips.map((clip) => clip.id)) + 1;
+        const clip = { id: nextId, name: file.name, fileName: file.name, mediaUrl: url, track: "V1", start: Math.max(0, playhead), duration, color: "blue" };
+        setClips((items) => [...items, clip]);
+        setSelected(nextId);
+        setPlayhead(clip.start);
+        setNotice("Imported " + file.name + " to the timeline");
+      };
+      probe.onerror = () => {
+        URL.revokeObjectURL(url);
+        setNotice("Could not read " + file.name + ". Try an MP4 video.");
+      };
+    });
+    setNotice("Loading video metadata…");
+    event.target.value = "";
+  }
 
   function addClip(track = "V1") {
     const nextId = Math.max(0, ...clips.map((clip) => clip.id)) + 1;
@@ -85,7 +127,7 @@ function App() {
         <aside className="sidebar">
           <button className="nav-item active"><FolderOpen size={17} /> Media</button>
           <button className="nav-item" onClick={() => setNotice("Effects panel will be added after core timeline editing")}><MonitorPlay size={17} /> Effects</button>
-          <div className="side-section"><div className="section-label">PROJECT MEDIA</div><div className="media-card"><div className="media-thumb"><Film size={22} /></div><div><strong>Sample sequence</strong><small>Timeline demo · 17 sec</small></div></div><button className="import-button" onClick={() => setNotice("Media import is the next app milestone")}><Plus size={15} /> Import media (next)</button></div>
+          <div className="side-section"><div className="section-label">PROJECT MEDIA</div><div className="media-card"><div className="media-thumb"><Film size={22} /></div><div><strong>Sample sequence</strong><small>Timeline demo · 17 sec</small></div></div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={() => fileInputRef.current?.click()}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} /></div>
           <div className="sidebar-bottom"><span className="status-dot" /> Desktop app prototype</div>
         </aside>
 
@@ -97,12 +139,12 @@ function App() {
                 <div className="preview-art"><div className="sun" /><div className="mountain mountain-back" /><div className="mountain mountain-front" /><div className="preview-caption">YOUR STORY STARTS HERE</div></div>
                 <div className="preview-overlay">Preview placeholder · media playback comes next</div>
               </div>
-              <div className="transport"><span className="timecode">{formatTime(playhead)} <span>/</span> {formatTime(totalDuration)}</span><div className="transport-controls"><button title="Previous second" onClick={() => setPlayhead(Math.max(0, playhead - 1))}><ChevronLeft size={18} /></button><button className="play-button" onClick={() => { setPlaying(!playing); setNotice("Playback engine will be connected after media import"); }} aria-label={playing ? "Pause" : "Play"}>{playing ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}</button><button title="Next second" onClick={() => setPlayhead(Math.min(totalDuration, playhead + 1))}><ChevronRight size={18} /></button></div><span className="preview-quality">FIT · 100%</span></div>
+              <div className="transport"><span className="timecode">{formatTime(playhead)} <span>/</span> {formatTime(totalDuration)}</span><div className="transport-controls"><button title="Previous second" onClick={() => setPlayhead(Math.max(0, playhead - 1))}><ChevronLeft size={18} /></button><button className="play-button" onClick={() => { if (selectedClip?.mediaUrl && videoRef.current) { if (videoRef.current.paused) { videoRef.current.play(); setPlaying(true); } else { videoRef.current.pause(); setPlaying(false); } } else { setNotice("Select an imported video clip to play it"); } }} aria-label={playing ? "Pause" : "Play"}>{playing ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}</button><button title="Next second" onClick={() => setPlayhead(Math.min(totalDuration, playhead + 1))}><ChevronRight size={18} /></button></div><span className="preview-quality">FIT · 100%</span></div>
             </section>
 
             <section className="inspector-panel">
               <div className="panel-heading"><span>INSPECTOR</span><span className="muted">Clip properties</span></div>
-              {selectedClip ? <div className="inspector-content"><div className={"inspector-color " + selectedClip.color}><Film size={22} /></div><label>Clip name<input value={selectedClip.name} onChange={(e) => setClips((items) => items.map((clip) => clip.id === selected ? { ...clip, name: e.target.value } : clip))} /></label><div className="property-grid"><label>Track<input value={selectedClip.track} readOnly /></label><label>Duration<input value={selectedClip.duration.toFixed(2) + " s"} readOnly /></label><label>Start<input value={selectedClip.start.toFixed(2) + " s"} readOnly /></label><label>End<input value={(selectedClip.start + selectedClip.duration).toFixed(2) + " s"} readOnly /></label></div><div className="inspector-hint">Select a clip on the timeline to edit its properties.</div></div> : <div className="empty-inspector">Select a clip to inspect it.</div>}
+              {selectedClip ? <div className="inspector-content"><div className={"inspector-color " + selectedClip.color}><Film size={22} /></div><label>Clip name<input value={selectedClip.name} onChange={(e) => setClips((items) => items.map((clip) => clip.id === selected ? { ...clip, name: e.target.value } : clip))} /></label><div className="property-grid"><label>Track<input value={selectedClip.track} readOnly /></label><label>Duration<input value={selectedClip.duration.toFixed(2) + " s"} readOnly /></label><label>Start<input value={selectedClip.start.toFixed(2) + " s"} readOnly /></label><label>End<input value={(selectedClip.start + selectedClip.duration).toFixed(2) + " s"} readOnly /></label></div><div className="inspector-hint">{selectedClip.fileName ? "Imported media: " + selectedClip.fileName : "Select a clip on the timeline to edit its properties."}</div></div> : <div className="empty-inspector">Select a clip to inspect it.</div>}
             </section>
           </div>
 
