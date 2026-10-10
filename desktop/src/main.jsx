@@ -137,10 +137,35 @@ function App() {
             <section className="preview-panel">
               <div className="panel-heading"><span>PREVIEW</span><span className="muted">Program monitor</span></div>
               <div className="preview-screen">
-                <div className="preview-art"><div className="sun" /><div className="mountain mountain-back" /><div className="mountain mountain-front" /><div className="preview-caption">YOUR STORY STARTS HERE</div></div>
-                <div className="preview-overlay">Preview placeholder · media playback comes next</div>
+                {selectedClip?.mediaUrl ? (
+                  <video
+                    key={selectedClip.id}
+                    ref={videoRef}
+                    className="video-preview"
+                    src={selectedClip.mediaUrl}
+                    controls
+                    preload="metadata"
+                    onLoadedMetadata={(e) => {
+                      const localTime = Math.max(0, Math.min(selectedClip.duration, playhead - selectedClip.start));
+                      if (Number.isFinite(localTime)) e.currentTarget.currentTime = localTime;
+                    }}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                    onEnded={() => setPlaying(false)}
+                    onTimeUpdate={(e) => {
+                      const nextTime = selectedClip.start + e.currentTarget.currentTime;
+                      setPlayhead(Math.min(selectedClip.start + selectedClip.duration, nextTime));
+                    }}
+                    onError={() => setNotice("This video format/codec could not be played. Try an MP4 encoded with H.264 video and AAC audio.")}
+                  />
+                ) : (
+                  <>
+                    <div className="preview-art"><div className="sun" /><div className="mountain mountain-back" /><div className="mountain mountain-front" /><div className="preview-caption">YOUR STORY STARTS HERE</div></div>
+                    <div className="preview-overlay">Import a video, then select its timeline clip</div>
+                  </>
+                )}
               </div>
-              <div className="transport"><span className="timecode">{formatTime(playhead)} <span>/</span> {formatTime(totalDuration)}</span><div className="transport-controls"><button title="Previous second" onClick={() => setPlayhead(Math.max(0, playhead - 1))}><ChevronLeft size={18} /></button><button className="play-button" onClick={() => { if (selectedClip?.mediaUrl && videoRef.current) { if (videoRef.current.paused) { videoRef.current.play(); setPlaying(true); } else { videoRef.current.pause(); setPlaying(false); } } else { setNotice("Select an imported video clip to play it"); } }} aria-label={playing ? "Pause" : "Play"}>{playing ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}</button><button title="Next second" onClick={() => setPlayhead(Math.min(totalDuration, playhead + 1))}><ChevronRight size={18} /></button></div><span className="preview-quality">FIT · 100%</span></div>
+              <div className="transport"><span className="timecode">{formatTime(playhead)} <span>/</span> {formatTime(totalDuration)}</span><div className="transport-controls"><button title="Previous second" onClick={() => setPlayhead(Math.max(0, playhead - 1))}><ChevronLeft size={18} /></button><button className="play-button" onClick={() => { if (selectedClip?.mediaUrl && videoRef.current) { if (videoRef.current.paused) { videoRef.current.play().catch(() => setNotice("Playback failed. Try an MP4 encoded with H.264 video and AAC audio.")); } else { videoRef.current.pause(); } } else { setNotice("Select an imported video clip to play it"); } }} aria-label={playing ? "Pause" : "Play"}>{playing ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}</button><button title="Next second" onClick={() => setPlayhead(Math.min(totalDuration, playhead + 1))}><ChevronRight size={18} /></button></div><span className="preview-quality">FIT · 100%</span></div>
             </section>
 
             <section className="inspector-panel">
