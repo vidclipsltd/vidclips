@@ -106,7 +106,7 @@ ipcMain.handle("vidclips:analyze-video", async (event, filePath, options = {}) =
     : [script, "--video", filePath, "--device", "cpu", "--analyzers", analyzerNames];
 
   return new Promise((resolve, reject) => {
-    const child = spawn(python, args, { cwd: repoRoot, windowsHide: true, env: { ...process.env, PYTHONUNBUFFERED: "1", VIDCLIPS_DEVICE: "cpu", PYTHONPATH: repoRoot, VIDCLIPS_OUTPUTS_DIR: path.join(app.getPath("userData"), "outputs"), VIDCLIPS_MODELS_DIR: path.join(app.getPath("userData"), "models"), VIDCLIPS_CHECKPOINTS_DIR: path.join(app.getPath("userData"), "checkpoints") } });
+    const child = spawn(python, args, { cwd: repoRoot, windowsHide: true, env: { ...process.env, PYTHONUNBUFFERED: "1", VIDCLIPS_DEVICE: "cpu", PYTHONPATH: repoRoot, PATH: [path.dirname(binaryPath("ffmpeg", ffmpegPackage)), path.dirname(binaryPath("ffprobe", ffprobePackage.path)), process.env.PATH || ""].join(path.delimiter), VIDCLIPS_OUTPUTS_DIR: path.join(app.getPath("userData"), "outputs"), VIDCLIPS_MODELS_DIR: path.join(app.getPath("userData"), "models"), VIDCLIPS_CHECKPOINTS_DIR: path.join(app.getPath("userData"), "checkpoints") } });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => {
