@@ -48,7 +48,10 @@ ipcMain.handle("vidclips:export-mp4", async (_event, project) => {
     const clip = clips[i];
     const sourceIn = Math.max(0, Number(clip.sourceIn) || 0);
     const duration = Math.max(0.05, Number(clip.duration));
-    filters.push("[" + i + ":v:0]trim=start=" + sourceIn + ":duration=" + duration + ",setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v" + i + "]");
+    const brightness = Math.max(0, Math.min(2, Number(clip.brightness ?? 1)));
+    const contrast = Math.max(0, Math.min(2, Number(clip.contrast ?? 1)));
+    const saturation = Math.max(0, Math.min(2, Number(clip.saturation ?? 1)));
+    filters.push("[" + i + ":v:0]trim=start=" + sourceIn + ":duration=" + duration + ",setpts=PTS-STARTPTS,eq=brightness=" + (brightness - 1) + ":contrast=" + contrast + ":saturation=" + saturation + ",scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v" + i + "]");
     let hasAudio = false;
     try {
       const probeArgs = ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", clip.mediaPath];
