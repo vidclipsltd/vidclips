@@ -14,6 +14,7 @@ function App() {
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
@@ -150,6 +151,17 @@ function App() {
     } catch (error) { setNotice("Video import failed: " + error.message); }
   }
 
+  async function exportMp4() {
+    if (!window.vidclips?.exportMp4) { setNotice("MP4 export is available in the Windows desktop app."); return; }
+    setExporting(true);
+    setNotice("Preparing timeline for MP4 export…");
+    try {
+      const result = await window.vidclips.exportMp4({ projectName, clips: clips.map(({ mediaUrl, ...clip }) => clip) });
+      if (!result?.canceled) setNotice("MP4 exported: " + result.filePath + " (" + result.clips + " video clips)");
+    } catch (error) { setNotice("MP4 export failed: " + (error?.message || String(error))); }
+    finally { setExporting(false); }
+  }
+
   async function analyzeSelectedVideo() {
     if (!selectedClip?.mediaPath || !window.vidclips?.analyzeVideo) {
       setNotice("Select an imported desktop video before starting analysis.");
@@ -207,7 +219,7 @@ function App() {
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Film size={19} /></div><span>VidClips</span><span className="desktop-tag">DESKTOP</span></div>
         <div className="project-title"><input aria-label="Project name" value={projectName} onChange={(e) => setProjectName(e.target.value)} /><span>Saved locally when exported</span></div>
-        <div className="top-actions"><button className="button quiet" onClick={openProject}><FolderOpen size={16} /> Open project</button><button className="button quiet" disabled={analyzing || !selectedClip?.mediaPath} onClick={analyzeSelectedVideo}>{analyzing ? "Analyzing…" : "AI Analyze"}</button><button className="button quiet" onClick={() => addClip("V1")}><Plus size={16} /> Add clip</button><button className="button primary" onClick={saveProject}><Save size={16} /> Save project</button></div>
+        <div className="top-actions"><button className="button quiet" onClick={openProject}><FolderOpen size={16} /> Open project</button><button className="button quiet" disabled={analyzing || !selectedClip?.mediaPath} onClick={analyzeSelectedVideo}>{analyzing ? "Analyzing…" : "AI Analyze"}</button><button className="button quiet" onClick={() => addClip("V1")}><Plus size={16} /> Add clip</button><button className="button quiet" disabled={exporting || clips.every((clip) => clip.track !== "V1" || !clip.mediaPath)} onClick={exportMp4}>{exporting ? "Exporting…" : "Export MP4"}</button><button className="button primary" onClick={saveProject}><Save size={16} /> Save project</button></div>
       </header>
 
       <div className="workspace">
