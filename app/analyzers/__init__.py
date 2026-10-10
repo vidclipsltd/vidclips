@@ -13,7 +13,7 @@ from app.analyzers import (  # noqa: F401
     object_detection,
     face_pose_hands,
     # ocr_text,
-    # depth_estimation,
+    depth_estimation,
     segmentation,
     color_grading,
     audio_analysis,

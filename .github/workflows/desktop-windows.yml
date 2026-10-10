@@ -15,6 +15,11 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check Python AI pipeline syntax
+        run: python -m compileall -q ../app ../scripts/desktop_analyze_video.py
       - uses: actions/setup-node@v4
         with:
           node-version: 20

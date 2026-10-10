@@ -53,6 +53,22 @@
       {
         "from": "node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe",
         "to": "ffprobe.exe"
+      },
+      {
+        "from": "../app",
+        "to": "vidclips-ai/app"
+      },
+      {
+        "from": "../scripts/desktop_analyze_video.py",
+        "to": "vidclips-ai/scripts/desktop_analyze_video.py"
+      },
+      {
+        "from": "../requirements.txt",
+        "to": "vidclips-ai/requirements.txt"
+      },
+      {
+        "from": "../docs/LIMITATIONS.md",
+        "to": "vidclips-ai/docs/LIMITATIONS.md"
       }
     ]
   }

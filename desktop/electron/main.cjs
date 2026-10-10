@@ -73,77 +73,70 @@ ipcMain.handle("vidclips:export-mp4", async (_event, project) => {
   return { canceled: false, filePath: save.filePath, clips: clips.length };
 });
 
-ipcMain.handle("vidclips:analyze-video", async (_event, filePath) => {
+ipcMain.handle("vidclips:analyze-video", async (event, filePath, options = {}) => {
   if (!filePath || typeof filePath !== "string") throw new Error("Select a valid local video file first.");
   const stat = await fs.stat(filePath).catch(() => null);
   if (!stat?.isFile()) throw new Error("The selected video file could not be found.");
-  const ffmpeg = binaryPath("ffmpeg", ffmpegPackage);
-  const ffprobe = binaryPath("ffprobe", ffprobePackage.path);
 
-  // All analysis happens on this PC. FFmpeg's scene-change detector is CPU-based
-  // and does not upload, transmit, or otherwise send the source video anywhere.
-  const probe = await runBinaryOutput(ffprobe, [
-    "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
-    "-of", "json", filePath
-  ]);
-  let mediaInfo;
-  try { mediaInfo = JSON.parse(probe.stdout); }
-  catch { throw new Error("Could not read this video's metadata. Try an MP4 or MOV file."); }
-  const duration = Number(mediaInfo?.format?.duration);
-  if (!Number.isFinite(duration) || duration <= 0) throw new Error("The video has no readable duration.");
-  const videoStream = (mediaInfo.streams || []).find((stream) => stream.codec_type === "video");
-  if (!videoStream) throw new Error("The selected file does not contain a video stream.");
+  // The desktop invokes the root repository's Python pipeline with a local
+  // filesystem path. It never calls the hosted website/backend or uploads media.
+  const repoRoot = app.isPackaged
+    ? path.join(process.resourcesPath, "vidclips-ai")
+    : path.resolve(__dirname, "../..");
+  const script = path.join(repoRoot, "scripts", "desktop_analyze_video.py");
+  const pythonCandidates = process.platform === "win32"
+    ? [process.env.VIDCLIPS_PYTHON, ...(!app.isPackaged ? [path.join(repoRoot, ".venv", "Scripts", "python.exe")] : []), "python", "py"]
+    : [process.env.VIDCLIPS_PYTHON, ...(!app.isPackaged ? [path.join(repoRoot, ".venv", "bin", "python")] : []), "python3", "python"];
+  let python = null;
+  for (const candidate of pythonCandidates) {
+    if (!candidate) continue;
+    if (!candidate.includes(path.sep) && !candidate.includes("/")) { python = candidate; break; }
+    if (await fs.stat(candidate).then((info) => info.isFile()).catch(() => false)) { python = candidate; break; }
+  }
+  if (!python) throw new Error("Python 3.11+ was not found. Install Python and the repository requirements, or set VIDCLIPS_PYTHON to your Python executable.");
+  if (!await fs.stat(script).then(() => true).catch(() => false)) {
+    throw new Error("The local AI pipeline files are missing. In the source checkout, keep the scripts and app folders beside desktop.");
+  }
 
-  const detection = await runBinaryOutput(ffmpeg, [
-    "-hide_banner", "-i", filePath, "-an",
-    "-vf", "select='gt(scene,0.30)',showinfo",
-    "-vsync", "vfr", "-f", "null", "-"
-  ]);
-  const timestamps = [];
-  const pattern = /pts_time:\s*([0-9]+(?:\.[0-9]+)?)/g;
-  let match;
-  while ((match = pattern.exec(detection.stderr)) !== null) {
-    const time = Number(match[1]);
-    if (Number.isFinite(time) && time > 0.15 && time < duration - 0.15) timestamps.push(time);
-  }
-  const boundaries = [0, ...[...new Set(timestamps.map((time) => Number(time.toFixed(3))))].sort((a, b) => a - b), duration];
-  const sceneClips = [];
-  for (let i = 0; i < boundaries.length - 1; i++) {
-    const sourceStart = boundaries[i];
-    const sourceEnd = boundaries[i + 1];
-    if (sourceEnd - sourceStart < 0.08) continue;
-    sceneClips.push({
-      id: "local-scene-" + (i + 1),
-      name: "Scene " + (sceneClips.length + 1),
-      start: sourceStart,
-      source_start: sourceStart,
-      source_end: sourceEnd,
-      duration: sourceEnd - sourceStart,
-      confidence: i === 0 ? 1 : 0.7
-    });
-  }
-  if (!sceneClips.length) sceneClips.push({
-    id: "local-scene-1", name: "Scene 1", start: 0, source_start: 0,
-    source_end: duration, duration, confidence: 1
-  });
-  return {
-    local: true,
-    runId: "local-" + Date.now(),
-    analysis: {
-      duration,
-      width: Number(videoStream.width) || null,
-      height: Number(videoStream.height) || null,
-      sceneCount: sceneClips.length,
-      method: "FFmpeg CPU scene-change detection",
-      uploaded: false
-    },
-    timeline: {
-      template: {
-        name: "Local AI Scene Analysis",
-        tracks: [{ type: "video", clips: sceneClips }]
+  const analyzerNames = Array.isArray(options?.analyzers) && options.analyzers.length
+    ? options.analyzers.join(",")
+    : "scene_detection,camera_motion,color_grading";
+  const args = python === "py"
+    ? ["-3", script, "--video", filePath, "--device", "cpu", "--analyzers", analyzerNames]
+    : [script, "--video", filePath, "--device", "cpu", "--analyzers", analyzerNames];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(python, args, { cwd: repoRoot, windowsHide: true, env: { ...process.env, PYTHONUNBUFFERED: "1", VIDCLIPS_DEVICE: "cpu", PYTHONPATH: repoRoot, PATH: [path.dirname(binaryPath("ffmpeg", ffmpegPackage)), path.dirname(binaryPath("ffprobe", ffprobePackage.path)), process.env.PATH || ""].join(path.delimiter), VIDCLIPS_OUTPUTS_DIR: path.join(app.getPath("userData"), "outputs"), VIDCLIPS_MODELS_DIR: path.join(app.getPath("userData"), "models"), VIDCLIPS_CHECKPOINTS_DIR: path.join(app.getPath("userData"), "checkpoints") } });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      stdout = (stdout + text).slice(-2_000_000);
+      for (const line of text.split(/\r?\n/)) {
+        if (line.trim()) event.sender.send("vidclips:analysis-progress", line.trim());
       }
-    }
-  };
+    });
+    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-100_000); });
+    child.on("error", (error) => reject(new Error("Could not start local Python analysis. Install Python 3.11+ and project requirements. " + error.message)));
+    child.on("close", (code) => {
+      const resultLine = stdout.split(/\r?\n/).reverse().find((line) => line.startsWith("VIDCLIPS_RESULT:"));
+      if (resultLine) {
+        try {
+          const result = JSON.parse(resultLine.slice("VIDCLIPS_RESULT:".length));
+          if (result.ok) return resolve(result);
+          return reject(new Error(result.error || "Local AI analysis failed."));
+        } catch (error) {
+          return reject(new Error("Could not read the local AI analysis result: " + error.message));
+        }
+      }
+      if (code === 0) return reject(new Error("Python analysis finished without returning a timeline."));
+      const diagnostic = stderr.trim() || stdout.trim() || ("Python exited with code " + code);
+      if (/No module named|ModuleNotFoundError|ImportError/i.test(diagnostic)) {
+        return reject(new Error("The local AI dependencies are not installed. Open a terminal in the repository root and run: python -m pip install -r requirements.txt. Details: " + diagnostic.slice(-1400)));
+      }
+      return reject(new Error(diagnostic.slice(-2500)));
+    });
+  });
 });
 
 ipcMain.handle("vidclips:open-media", async () => {

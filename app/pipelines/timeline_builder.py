@@ -166,8 +166,69 @@ def build_timeline_template(run: Any) -> dict[str, Any]:
         effects.extend(_color_effects(color_result.data, duration))
 
     beats = []
+    transcript_segments = []
     if audio_result and audio_result.status == "ok":
         beats = audio_result.data.get("beats", []) or audio_result.data.get("beat_times", []) or []
+        transcript = audio_result.data.get("transcript", {})
+        if isinstance(transcript, dict):
+            transcript_segments = transcript.get("segments", []) or []
+
+    object_result = run.results.get("object_detection")
+    object_tracks = []
+    if object_result and object_result.status == "ok":
+        for track in object_result.data.get("tracks", []):
+            first_seen = track.get("first_seen_sec")
+            last_seen = track.get("last_seen_sec")
+            if first_seen is None:
+                continue
+            object_tracks.append({
+                "id": f"object-{track.get('track_id', len(object_tracks) + 1)}",
+                "label": track.get("label") or "Object",
+                "track_id": track.get("track_id"),
+                "start": round(float(first_seen), 3),
+                "end": round(float(last_seen if last_seen is not None else first_seen) + 0.1, 3),
+                "confidence": (track.get("path") or [{}])[0].get("confidence"),
+            })
+
+    people_events = []
+    face_result = run.results.get("face_pose")
+    if face_result and face_result.status == "ok":
+        for frame in face_result.data.get("frames", []):
+            faces = frame.get("faces") or []
+            hands = frame.get("hands") or []
+            has_pose = bool(frame.get("pose_landmarks"))
+            if faces or hands or has_pose:
+                people_events.append({
+                    "time": round(float(frame.get("timestamp_sec", 0)), 3),
+                    "label": "Face / pose / hands",
+                    "faces": len(faces),
+                    "hands": len(hands),
+                    "pose": has_pose,
+                })
+
+    segmentation_events = []
+    segmentation_result = run.results.get("segmentation")
+    if segmentation_result and segmentation_result.status == "ok":
+        segmentation_events = [
+            {
+                "time": round(float(frame.get("timestamp_sec", 0)), 3),
+                "coverage": frame.get("foreground_coverage"),
+                "mask_path": frame.get("mask_path"),
+            }
+            for frame in segmentation_result.data.get("frames", [])
+        ]
+
+    depth_events = []
+    depth_result = run.results.get("depth")
+    if depth_result and depth_result.status == "ok":
+        depth_events = [
+            {
+                "time": round(float(frame.get("timestamp_sec", 0)), 3),
+                "depth_map_path": frame.get("depth_map_path"),
+                "mean": frame.get("mean"),
+            }
+            for frame in depth_result.data.get("frames", [])
+        ]
 
     return {
         "version": 1,
@@ -186,6 +247,11 @@ def build_timeline_template(run: Any) -> dict[str, Any]:
             "markers": {
                 "beats": beats,
                 "scenes": scenes,
+                "objects": object_tracks,
+                "people": people_events,
+                "segmentation": segmentation_events,
+                "depth": depth_events,
+                "transcript": transcript_segments,
             },
         },
     }

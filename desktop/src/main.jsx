@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Film, FolderOpen, Plus, Play, Pause, Scissors, Trash2, ChevronLeft,
@@ -16,6 +16,9 @@ function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null);
+  const [analysisProgress, setAnalysisProgress] = useState("");
+  const [analysisStatus, setAnalysisStatus] = useState("");
+  const [analysisOptions, setAnalysisOptions] = useState(["scene_detection", "camera_motion", "color_grading"]);
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
   const [notice, setNotice] = useState("Desktop workspace ready");
@@ -23,6 +26,14 @@ function App() {
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const nextClipIdRef = useRef(1);
+
+  useEffect(() => {
+    if (!window.vidclips?.onAnalysisProgress) return undefined;
+    return window.vidclips.onAnalysisProgress((message) => {
+      setAnalysisProgress(message);
+      if (/Starting analyzer:|Collected result:|analysis started|Selected analyzers/i.test(message)) setNotice("AI: " + message);
+    });
+  }, []);
 
   const selectedClip = clips.find((clip) => clip.id === selected);
   const totalDuration = Math.max(20, ...clips.map((clip) => clip.start + clip.duration));
@@ -40,7 +51,7 @@ function App() {
     }
     const imported = videos.map((file) => ({
       id: null,
-      name: file.name.replace(/\\.[^.]+$/, ""),
+      name: file.name.replace(/\.[^.]+$/, ""),
       fileName: file.name,
       url: URL.createObjectURL(file),
       file
@@ -190,9 +201,11 @@ function App() {
       return;
     }
     setAnalyzing(true);
-    setNotice("Analyzing video locally on this PC using the CPU. Your video is not uploaded…");
+    setAnalysisProgress("Starting local Python AI pipeline…");
+    setNotice("Analyzing locally on this PC using the CPU. Your video is not uploaded…");
     try {
-      const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath);
+      if (!analysisOptions.length) throw new Error("Select at least one local analyzer.");
+      const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath, { analyzers: analysisOptions });
       const template = result?.timeline?.template;
       const sourceTrack = template?.tracks?.find((track) => track.type === "video");
       const sourceCuts = sourceTrack?.clips || [];
@@ -202,13 +215,62 @@ function App() {
         const sourceIn = Number(scene.source_start ?? scene.start ?? 0);
         const sourceOut = Number(scene.source_end ?? scene.end ?? original.duration);
         const duration = Math.max(0.05, sourceOut - sourceIn);
-        return { ...original, id: nextClipIdRef.current++, name: "AI Scene " + (index + 1), start: Number(scene.start ?? sourceIn), duration, sourceIn, sourceOut, color: index % 2 ? "teal" : "blue", aiGenerated: true };
+        return { ...original, id: nextClipIdRef.current++, name: "AI Scene " + (index + 1), track: "V1", start: Number(scene.start ?? sourceIn), duration, sourceIn, sourceOut, color: index % 2 ? "teal" : "blue", aiGenerated: true };
       });
-      setClips((items) => [...items.filter((clip) => clip.id !== original.id), ...sceneClips]);
+      const templateTracks = template?.template?.tracks || [];
+      const effectsTrack = templateTracks.find((track) => track.type === "effects");
+      const transitionsTrack = templateTracks.find((track) => track.type === "transitions");
+      const effectClips = (effectsTrack?.items || []).filter((item) => Number(item.end) > Number(item.start)).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "AI " + String(item.type || "Effect").replace(/_/g, " ") + " " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.15, (Number(item.end) || 0) - (Number(item.start) || 0)),
+        color: "teal", aiGenerated: true, aiType: item.type, aiData: item
+      }));
+      const transitionClips = (transitionsTrack?.items || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "AI " + String(item.type || "Cut") + " " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.12, Number(item.duration) || 0.12),
+        color: "purple", aiGenerated: true, aiType: "transition", aiData: item
+      }));
+      const markers = template?.template?.markers || {};
+      const beatValues = markers.beats || [];
+      const beatClips = beatValues.map((beat, index) => {
+        const at = typeof beat === "number" ? beat : Number(beat?.time_sec ?? beat?.timestamp_sec ?? beat?.start_sec ?? beat?.time ?? beat?.start ?? 0);
+        return { id: nextClipIdRef.current++, name: "Beat " + (index + 1), track: "A1", start: Math.max(0, at), duration: 0.12, color: "green", aiGenerated: true, aiType: "beat" };
+      }).filter((clip) => Number.isFinite(clip.start));
+      const objectClips = (markers.objects || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Object: " + (item.label || "Detected") + (item.track_id == null ? "" : " #" + item.track_id),
+        track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.12, (Number(item.end) || 0) - (Number(item.start) || 0)),
+        color: "purple", aiGenerated: true, aiType: "object", aiData: item
+      }));
+      const peopleClips = (markers.people || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Person analysis " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.time) || 0), duration: 0.12,
+        color: "teal", aiGenerated: true, aiType: "people", aiData: item
+      }));
+      const maskClips = (markers.segmentation || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Person mask " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.time) || 0), duration: 0.12,
+        color: "teal", aiGenerated: true, aiType: "segmentation", aiData: item
+      }));
+      const depthClips = (markers.depth || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Depth map " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.time) || 0), duration: 0.12,
+        color: "purple", aiGenerated: true, aiType: "depth", aiData: item
+      }));
+      const transcriptClips = (markers.transcript || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Speech: " + String(item.text || "Transcript").slice(0, 48),
+        track: "A1", start: Math.max(0, Number(item.start_sec) || 0), duration: Math.max(0.12, (Number(item.end_sec) || 0) - (Number(item.start_sec) || 0)),
+        color: "green", aiGenerated: true, aiType: "transcript", aiData: item
+      }));
+      const overlayClips = [...effectClips, ...transitionClips, ...beatClips, ...objectClips, ...peopleClips, ...maskClips, ...depthClips, ...transcriptClips];
+      setClips((items) => [...items.filter((clip) => clip.id !== original.id && !clip.aiGenerated), ...sceneClips, ...overlayClips]);
       setSelected(sceneClips[0]?.id ?? null);
       setPlayhead(sceneClips[0]?.start ?? 0);
       setAnalysisResults(template);
-      setNotice("Local analysis complete: " + sceneClips.length + " editable scene clips created on this PC. No upload.");
+      const statuses = Object.entries(result.analyzers || {}).map(([name, info]) => name + ": " + info.status + (info.error ? " (" + info.error + ")" : ""));
+      setAnalysisStatus(statuses.join(" · "));
+      const extraTracks = (template?.template?.tracks || []).filter((track) => track.type !== "video").length;
+      setAnalysisProgress("Finished on CPU · " + (result.outputDir || "results saved locally"));
+      setNotice("Local Python analysis complete: " + sceneClips.length + " editable scene clips. " + statuses.join(" · ") + (extraTracks ? " · Additional analysis tracks are available in the result JSON." : ""));
     } catch (error) {
       setNotice("Analysis failed: " + (error?.message || String(error)));
     } finally {
@@ -248,7 +310,21 @@ function App() {
         <aside className="sidebar">
           <button className="nav-item active"><FolderOpen size={17} /> Media</button>
           <button className="nav-item" onClick={() => setNotice("Effects panel will be added after core timeline editing")}><MonitorPlay size={17} /> Effects</button>
-          <div className="side-section"><div className="section-label">PROJECT MEDIA</div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={importDesktopMedia}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} /></div>
+          <div className="side-section"><div className="section-label">PROJECT MEDIA</div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={importDesktopMedia}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} />
+          <div className="ai-options">
+            <div className="section-label">LOCAL AI ANALYZERS</div>
+            {[
+              ["scene_detection", "Scene cuts"],
+              ["camera_motion", "Camera motion"],
+              ["color_grading", "Color analysis"],
+              ["object_detection", "Object detection (YOLO)"],
+              ["face_pose", "Face / pose / hands"],
+              ["segmentation", "Person segmentation"],
+              ["depth", "Depth estimation (MiDaS)"],
+              ["audio", "Audio / beats / speech"]
+            ].map(([key, label]) => <label key={key} className="ai-option"><input type="checkbox" checked={analysisOptions.includes(key)} onChange={(event) => setAnalysisOptions((items) => event.target.checked ? [...items, key] : items.filter((item) => item !== key))} /><span>{label}</span></label>)}
+            <p>Runs on this PC's CPU. First use may download large AI models; advanced analyzers can be slow.</p>
+          </div></div>
           <div className="sidebar-bottom"><span className="status-dot" /> Desktop app prototype</div>
         </aside>
 
@@ -303,6 +379,15 @@ function App() {
               <div className="playhead-line" style={{ left: 176 + playhead * pixelsPerSecond }}><div className="playhead-cap" /></div>
             </div></div>
             <div className="timeline-footer"><span className="notice">{notice}</span><span>Playhead <strong>{formatTime(playhead)}</strong></span><button onClick={() => addClip("A1")}><Plus size={14} /> Add audio track clip</button></div>
+            {analysisResults && <div className="analysis-results" aria-live="polite">
+              <strong>Local AI results</strong>
+              <span>{analysisResults.template?.markers?.scenes?.length || clips.filter((clip) => clip.aiGenerated).length} scene markers</span>
+              <span>{analysisResults.template?.markers?.beats?.length || 0} beat markers</span>
+              <span>{analysisResults.template?.markers?.objects?.length || 0} object tracks</span>
+              <span>{analysisResults.template?.markers?.transcript?.length || 0} speech segments</span>
+              <span>{(analysisResults.template?.tracks || []).filter((track) => track.type === "effects").flatMap((track) => track.items || []).length} effects</span>
+              <span className="analysis-path" title={analysisStatus}>{analysisStatus || analysisProgress}</span>
+            </div>}
           </section>
         </main>
       </div>
