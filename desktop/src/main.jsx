@@ -6,17 +6,12 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const initialClips = [
-  { id: 1, name: "Opening shot", track: "V1", start: 0, duration: 5.2, color: "purple" },
-  { id: 2, name: "City B-roll", track: "V1", start: 5.4, duration: 6.8, color: "blue" },
-  { id: 3, name: "Close-up", track: "V1", start: 12.5, duration: 4.4, color: "teal" },
-  { id: 4, name: "Music bed", track: "A1", start: 0, duration: 17, color: "green" }
-];
+const initialClips = [];
 
 function App() {
   const [clips, setClips] = useState(initialClips);
-  const [selected, setSelected] = useState(2);
-  const [playhead, setPlayhead] = useState(5.4);
+  const [selected, setSelected] = useState(null);
+  const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
@@ -24,7 +19,7 @@ function App() {
   const [mediaFiles, setMediaFiles] = useState([]);
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
-  const nextClipIdRef = useRef(5);
+  const nextClipIdRef = useRef(1);
 
   const selectedClip = clips.find((clip) => clip.id === selected);
   const totalDuration = Math.max(20, ...clips.map((clip) => clip.start + clip.duration));
@@ -107,16 +102,70 @@ function App() {
     setNotice(amount < 0 ? "Moved clip earlier" : "Moved clip later");
   }
 
-  function saveProject() {
-    const project = { app: "VidClips Desktop", version: 1, projectName, clips, playhead };
+  async function saveProject() {
+    const project = { app: "VidClips Desktop", version: 2, projectName, clips: clips.map(({ mediaUrl, ...clip }) => clip), playhead };
+    if (window.vidclips?.saveProject) {
+      try {
+        const result = await window.vidclips.saveProject(project);
+        if (!result?.canceled) setNotice("Project saved: " + result.filePath);
+      } catch (error) { setNotice("Could not save project: " + error.message); }
+      return;
+    }
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".vidclips.json";
     link.click();
-    URL.revokeObjectURL(url);
-    setNotice("Project file downloaded");
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice("Project JSON downloaded (media paths are only reusable in the desktop app)");
+  }
+
+  async function importDesktopMedia() {
+    if (!window.vidclips?.openMediaFiles) { fileInputRef.current?.click(); return; }
+    try {
+      const files = await window.vidclips.openMediaFiles();
+      if (!files?.length) return;
+      files.forEach((file) => {
+        const url = file.url;
+        const probe = document.createElement("video");
+        probe.preload = "metadata";
+        probe.src = url;
+        const id = nextClipIdRef.current++;
+        probe.onloadedmetadata = () => {
+          const duration = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0;
+          if (!duration) { setNotice("Could not read duration for " + file.name); return; }
+          const clip = { id, name: file.name.replace(/\.[^.]+$/, ""), fileName: file.name, mediaPath: file.path, mediaUrl: url, track: "V1", start: Math.max(0, playhead), duration, sourceIn: 0, sourceOut: duration, color: "blue" };
+          setClips((items) => [...items, clip]);
+          setMediaFiles((items) => [...items, { ...file, id, url, name: file.name.replace(/\.[^.]+$/, "") }]);
+          setSelected(id);
+          setPlayhead(clip.start);
+          setNotice("Imported " + file.name + " (" + duration.toFixed(2) + " s)");
+        };
+        probe.onerror = () => setNotice("Cannot read " + file.name + ". Try H.264 MP4 or WebM.");
+      });
+      setNotice("Reading selected video metadata…");
+    } catch (error) { setNotice("Video import failed: " + error.message); }
+  }
+
+  async function openProject() {
+    if (!window.vidclips?.openProject) { setNotice("Open project is available in the Windows desktop app."); return; }
+    try {
+      const project = await window.vidclips.openProject();
+      if (!project) return;
+      if (!Array.isArray(project.clips)) throw new Error("This file is not a valid VidClips project.");
+      const restored = project.clips.map((clip) => {
+        if (!clip.mediaPath) return { ...clip, mediaUrl: null };
+        return { ...clip, mediaUrl: "file:///" + clip.mediaPath.replace(/\\/g, "/").replace(/^\//, "").replace(/ /g, "%20") };
+      });
+      setClips(restored);
+      setProjectName(project.projectName || "Untitled project");
+      setPlayhead(Number(project.playhead) || 0);
+      setSelected(restored[0]?.id ?? null);
+      setMediaFiles(restored.filter((clip) => clip.mediaPath).map((clip) => ({ ...clip, url: clip.mediaUrl, name: clip.name })));
+      nextClipIdRef.current = Math.max(1, ...restored.map((clip) => Number(clip.id) + 1 || 1));
+      setNotice("Project opened. If a source file moved, re-import that video.");
+    } catch (error) { setNotice("Could not open project: " + error.message); }
   }
 
   return (
@@ -124,14 +173,14 @@ function App() {
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Film size={19} /></div><span>VidClips</span><span className="desktop-tag">DESKTOP</span></div>
         <div className="project-title"><input aria-label="Project name" value={projectName} onChange={(e) => setProjectName(e.target.value)} /><span>Saved locally when exported</span></div>
-        <div className="top-actions"><button className="button quiet" onClick={() => addClip("V1")}><Plus size={16} /> Add clip</button><button className="button primary" onClick={saveProject}><Save size={16} /> Save project</button></div>
+        <div className="top-actions"><button className="button quiet" onClick={openProject}><FolderOpen size={16} /> Open project</button><button className="button quiet" onClick={() => addClip("V1")}><Plus size={16} /> Add clip</button><button className="button primary" onClick={saveProject}><Save size={16} /> Save project</button></div>
       </header>
 
       <div className="workspace">
         <aside className="sidebar">
           <button className="nav-item active"><FolderOpen size={17} /> Media</button>
           <button className="nav-item" onClick={() => setNotice("Effects panel will be added after core timeline editing")}><MonitorPlay size={17} /> Effects</button>
-          <div className="side-section"><div className="section-label">PROJECT MEDIA</div><div className="media-card"><div className="media-thumb"><Film size={22} /></div><div><strong>Sample sequence</strong><small>Timeline demo · 17 sec</small></div></div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={() => fileInputRef.current?.click()}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} /></div>
+          <div className="side-section"><div className="section-label">PROJECT MEDIA</div><div className="media-card"><div className="media-thumb"><Film size={22} /></div><div><strong>Sample sequence</strong><small>Timeline demo · 17 sec</small></div></div>{mediaFiles.map((item, index) => <button className="media-card imported-media" key={item.url + index} onClick={() => { const clip = clips.find((c) => c.mediaUrl === item.url); if (clip) { setSelected(clip.id); setPlayhead(clip.start); } }}><div className="media-thumb"><Film size={22} /></div><div><strong>{item.name}</strong><small>{item.fileName}</small></div></button>)}<button className="import-button" onClick={importDesktopMedia}><Plus size={15} /> Import video</button><input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.webm,.mkv" multiple hidden onChange={importMedia} /></div>
           <div className="sidebar-bottom"><span className="status-dot" /> Desktop app prototype</div>
         </aside>
 
