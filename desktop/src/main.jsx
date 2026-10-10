@@ -229,12 +229,38 @@ function App() {
         track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.12, Number(item.duration) || 0.12),
         color: "purple", aiGenerated: true, aiType: "transition", aiData: item
       }));
-      const beatValues = template?.template?.markers?.beats || [];
+      const markers = template?.template?.markers || {};
+      const beatValues = markers.beats || [];
       const beatClips = beatValues.map((beat, index) => {
         const at = typeof beat === "number" ? beat : Number(beat?.time_sec ?? beat?.timestamp_sec ?? beat?.start_sec ?? beat?.time ?? beat?.start ?? 0);
         return { id: nextClipIdRef.current++, name: "Beat " + (index + 1), track: "A1", start: Math.max(0, at), duration: 0.12, color: "green", aiGenerated: true, aiType: "beat" };
       }).filter((clip) => Number.isFinite(clip.start));
-      const overlayClips = [...effectClips, ...transitionClips, ...beatClips];
+      const objectClips = (markers.objects || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Object: " + (item.label || "Detected") + (item.track_id == null ? "" : " #" + item.track_id),
+        track: "V2", start: Math.max(0, Number(item.start) || 0), duration: Math.max(0.12, (Number(item.end) || 0) - (Number(item.start) || 0)),
+        color: "purple", aiGenerated: true, aiType: "object", aiData: item
+      }));
+      const peopleClips = (markers.people || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Person analysis " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.time) || 0), duration: 0.12,
+        color: "teal", aiGenerated: true, aiType: "people", aiData: item
+      }));
+      const maskClips = (markers.segmentation || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Person mask " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.time) || 0), duration: 0.12,
+        color: "teal", aiGenerated: true, aiType: "segmentation", aiData: item
+      }));
+      const depthClips = (markers.depth || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Depth map " + (index + 1),
+        track: "V2", start: Math.max(0, Number(item.time) || 0), duration: 0.12,
+        color: "purple", aiGenerated: true, aiType: "depth", aiData: item
+      }));
+      const transcriptClips = (markers.transcript || []).map((item, index) => ({
+        id: nextClipIdRef.current++, name: "Speech: " + String(item.text || "Transcript").slice(0, 48),
+        track: "A1", start: Math.max(0, Number(item.start_sec) || 0), duration: Math.max(0.12, (Number(item.end_sec) || 0) - (Number(item.start_sec) || 0)),
+        color: "green", aiGenerated: true, aiType: "transcript", aiData: item
+      }));
+      const overlayClips = [...effectClips, ...transitionClips, ...beatClips, ...objectClips, ...peopleClips, ...maskClips, ...depthClips, ...transcriptClips];
       setClips((items) => [...items.filter((clip) => clip.id !== original.id && !clip.aiGenerated), ...sceneClips, ...overlayClips]);
       setSelected(sceneClips[0]?.id ?? null);
       setPlayhead(sceneClips[0]?.start ?? 0);
