@@ -92,7 +92,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   protocol.handle("vidclips-media", (request) => {
-    const id = new URL(request.url).pathname.replace(/^\\//, "");
+    const id = new URL(request.url).pathname.slice(1);
     const filePath = mediaPaths.get(id);
     if (!filePath) return new Response("Media reference expired. Reopen or re-import the source file.", { status: 404 });
     return net.fetch(pathToFileURL(filePath).href);
