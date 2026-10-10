@@ -190,7 +190,7 @@ function App() {
       return;
     }
     setAnalyzing(true);
-    setNotice("Checking analysis backend and uploading video…");
+    setNotice("Analyzing video locally on this PC using the CPU. Your video is not uploaded…");
     try {
       const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath);
       const template = result?.timeline?.template;
@@ -208,7 +208,7 @@ function App() {
       setSelected(sceneClips[0]?.id ?? null);
       setPlayhead(sceneClips[0]?.start ?? 0);
       setAnalysisResults(template);
-      setNotice("AI analysis completed: " + sceneClips.length + " editable scene clips created. Job " + result.runId.slice(0, 8));
+      setNotice("Local analysis complete: " + sceneClips.length + " editable scene clips created on this PC. No upload.");
     } catch (error) {
       setNotice("Analysis failed: " + (error?.message || String(error)));
     } finally {
