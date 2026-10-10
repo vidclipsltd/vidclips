@@ -4,5 +4,6 @@ contextBridge.exposeInMainWorld("vidclips", {
   openMediaFiles: () => ipcRenderer.invoke("vidclips:open-media"),
   saveProject: (project) => ipcRenderer.invoke("vidclips:save-project", project),
   openProject: () => ipcRenderer.invoke("vidclips:open-project"),
-  mediaUrlFromPath: (filePath) => ipcRenderer.invoke("vidclips:media-url", filePath)
+  mediaUrlFromPath: (filePath) => ipcRenderer.invoke("vidclips:media-url", filePath),
+  analyzeVideo: (filePath) => ipcRenderer.invoke("vidclips:analyze-video", filePath)
 });
