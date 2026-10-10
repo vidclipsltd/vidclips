@@ -3,3 +3,5 @@
 .video-preview{width:100%;height:100%;object-fit:contain;background:#08090c;display:block}.imported-media{width:100%;text-align:left;cursor:pointer;border:0;color:inherit;font:inherit}
 
 .inspector-content select{width:100%;min-width:0;background:#202127;border:1px solid #353640;border-radius:5px;padding:8px;color:#ededf3;outline:none}.inspector-content select:focus{border-color:#8b70df}.clip-block{touch-action:none;user-select:none}.button:disabled{opacity:.45;cursor:not-allowed}
+
+.effect-controls{display:flex;flex-direction:column;gap:8px;padding:10px;background:#202127;border:1px solid #30313a;border-radius:6px}.effect-controls strong{font-size:11px;color:#d8d4e8}.effect-controls label{display:flex;flex-direction:column;gap:5px;font-size:10px;color:#a6a7b1}.effect-controls input[type=range]{width:100%;padding:0;accent-color:#9b7aff}
