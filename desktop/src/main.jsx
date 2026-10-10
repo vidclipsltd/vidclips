@@ -51,7 +51,7 @@ function App() {
     }
     const imported = videos.map((file) => ({
       id: null,
-      name: file.name.replace(/\\.[^.]+$/, ""),
+      name: file.name.replace(/\.[^.]+$/, ""),
       fileName: file.name,
       url: URL.createObjectURL(file),
       file
