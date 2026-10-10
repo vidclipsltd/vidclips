@@ -17,6 +17,7 @@ function App() {
   const [exporting, setExporting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [analysisProgress, setAnalysisProgress] = useState("");
+  const [analysisStatus, setAnalysisStatus] = useState("");
   const [analysisOptions, setAnalysisOptions] = useState(["scene_detection", "camera_motion", "color_grading"]);
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
@@ -266,6 +267,7 @@ function App() {
       setPlayhead(sceneClips[0]?.start ?? 0);
       setAnalysisResults(template);
       const statuses = Object.entries(result.analyzers || {}).map(([name, info]) => name + ": " + info.status + (info.error ? " (" + info.error + ")" : ""));
+      setAnalysisStatus(statuses.join(" · "));
       const extraTracks = (template?.template?.tracks || []).filter((track) => track.type !== "video").length;
       setAnalysisProgress("Finished on CPU · " + (result.outputDir || "results saved locally"));
       setNotice("Local Python analysis complete: " + sceneClips.length + " editable scene clips. " + statuses.join(" · ") + (extraTracks ? " · Additional analysis tracks are available in the result JSON." : ""));
@@ -380,9 +382,11 @@ function App() {
             {analysisResults && <div className="analysis-results" aria-live="polite">
               <strong>Local AI results</strong>
               <span>{analysisResults.template?.markers?.scenes?.length || clips.filter((clip) => clip.aiGenerated).length} scene markers</span>
-              <span>{analysisResults.template?.markers?.beats?.length || 0} audio beat markers</span>
-              <span>{(analysisResults.template?.tracks || []).filter((track) => track.type === "effects").flatMap((track) => track.items || []).length} detected effects</span>
-              <span className="analysis-path">{analysisProgress}</span>
+              <span>{analysisResults.template?.markers?.beats?.length || 0} beat markers</span>
+              <span>{analysisResults.template?.markers?.objects?.length || 0} object tracks</span>
+              <span>{analysisResults.template?.markers?.transcript?.length || 0} speech segments</span>
+              <span>{(analysisResults.template?.tracks || []).filter((track) => track.type === "effects").flatMap((track) => track.items || []).length} effects</span>
+              <span className="analysis-path" title={analysisStatus}>{analysisStatus || analysisProgress}</span>
             </div>}
           </section>
         </main>
