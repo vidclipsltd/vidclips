@@ -156,7 +156,7 @@ function App() {
       if (!Array.isArray(project.clips)) throw new Error("This file is not a valid VidClips project.");
       const restored = project.clips.map((clip) => {
         if (!clip.mediaPath) return { ...clip, mediaUrl: null };
-        return { ...clip, mediaUrl: "file:///" + clip.mediaPath.replace(/\\/g, "/").replace(/^\//, "").replace(/ /g, "%20") };
+        return { ...clip, mediaUrl: window.vidclips.mediaUrlFromPath(clip.mediaPath) };
       });
       setClips(restored);
       setProjectName(project.projectName || "Untitled project");
