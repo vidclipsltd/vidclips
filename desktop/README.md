@@ -1,14 +1,14 @@
 # VidClips Desktop (Windows)
 
-This is a **separate Electron desktop app**. It lives in `desktop/` and does not replace or change the existing website deployment.
+VidClips Desktop is a separate Electron application in this folder. It does not replace the GitHub Pages website or change the deployed Render backend.
 
 ## Requirements
-- Windows 10 or Windows 11
+- Windows 10/11
 - Node.js 20 LTS or newer
-- npm (included with Node.js)
+- npm
 
 ## Run in development
-Open PowerShell in the repository's `desktop` folder:
+Open PowerShell in this `desktop` folder:
 
 ```powershell
 npm install
@@ -16,24 +16,23 @@ npm run dev
 ```
 
 ## Build a Windows installer
-Run in the same folder:
-
 ```powershell
 npm install
 npm run dist:win
 ```
 
-The installer will be created in `desktop/release/`.
+The installer should be generated under `desktop/release/`. A Windows GitHub Actions workflow also builds the installer and uploads it as an artifact when manually run or when desktop files change.
 
-## Current prototype
-The desktop shell includes a selectable multi-track timeline, playhead/ruler seeking, add clip, split selected clip at the playhead, delete, nudge clips earlier/later, editable clip names, zoom, and export of the timeline structure as a JSON project file.
-
-The preview is currently a placeholder. Local media import, real video playback, project reopening, drag-to-trim, and MP4 rendering are follow-up milestones. This prototype does not yet claim to render an edited video.
+## Current status and limitations
+- Native Windows file picker for importing videos.
+- HTML video preview for codecs supported by the Electron/Chromium build.
+- Basic multitrack timeline, clip selection, splitting, deleting, nudging, and zoom.
+- Save/open project JSON through native dialogs. Source media paths are stored, so the original media files must remain at those paths.
+- This is still an early editor: the timeline is not yet a complete nonlinear editor. Drag-to-move/trim, reliable cross-clip playback, effects, audio editing, AI-driven timeline generation, and MP4 rendering are not implemented yet. Do not treat a JSON project export as a rendered video.
 
 ## Architecture
 - Electron main process: `electron/main.cjs`
+- Restricted preload bridge: `electron/preload.cjs`
 - React UI: `src/main.jsx`
 - Styling: `src/styles.css`
 - Vite build output: `dist/`
-
-The app is packaged independently from the existing GitHub Pages website and Render backend.
