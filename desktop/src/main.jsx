@@ -99,6 +99,28 @@ function App() {
     setNotice("Selected clip deleted");
   }
 
+  function beginClipDrag(event, clipId) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelected(clipId);
+    const originX = event.clientX;
+    const clip = clips.find((item) => item.id === clipId);
+    if (!clip) return;
+    const originStart = clip.start;
+    const move = (pointerEvent) => {
+      const delta = (pointerEvent.clientX - originX) / pixelsPerSecond;
+      setClips((items) => items.map((item) => item.id === clipId ? { ...item, start: Math.max(0, originStart + delta) } : item));
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      setNotice("Moved " + clip.name + " on the timeline");
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+  }
+
   function nudgeSelected(amount) {
     if (!selectedClip) return;
     setClips((items) => items.map((clip) => clip.id === selected ? { ...clip, start: Math.max(0, clip.start + amount) } : clip));
@@ -268,7 +290,7 @@ function App() {
 
             <section className="inspector-panel">
               <div className="panel-heading"><span>INSPECTOR</span><span className="muted">Clip properties</span></div>
-              {selectedClip ? <div className="inspector-content"><div className={"inspector-color " + selectedClip.color}><Film size={22} /></div><label>Clip name<input value={selectedClip.name} onChange={(e) => setClips((items) => items.map((clip) => clip.id === selected ? { ...clip, name: e.target.value } : clip))} /></label><div className="property-grid"><label>Track<input value={selectedClip.track} readOnly /></label><label>Duration<input value={selectedClip.duration.toFixed(2) + " s"} readOnly /></label><label>Start<input value={selectedClip.start.toFixed(2) + " s"} readOnly /></label><label>End<input value={(selectedClip.start + selectedClip.duration).toFixed(2) + " s"} readOnly /></label></div><div className="inspector-hint">{selectedClip.fileName ? "Imported media: " + selectedClip.fileName : "Select a clip on the timeline to edit its properties."}</div></div> : <div className="empty-inspector">Select a clip to inspect it.</div>}
+              {selectedClip ? <div className="inspector-content"><div className={"inspector-color " + selectedClip.color}><Film size={22} /></div><label>Clip name<input value={selectedClip.name} onChange={(e) => setClips((items) => items.map((clip) => clip.id === selected ? { ...clip, name: e.target.value } : clip))} /></label><div className="property-grid"><label>Track<select value={selectedClip.track} onChange={(e) => setClips((items) => items.map((clip) => clip.id === selected ? { ...clip, track: e.target.value } : clip))}><option value="V1">V1 · Video 1</option><option value="V2">V2 · Video 2</option><option value="A1">A1 · Audio 1</option></select></label><label>Duration<input value={selectedClip.duration.toFixed(2) + " s"} readOnly /></label><label>Start<input value={selectedClip.start.toFixed(2) + " s"} readOnly /></label><label>End<input value={(selectedClip.start + selectedClip.duration).toFixed(2) + " s"} readOnly /></label></div><div className="inspector-hint">{selectedClip.fileName ? "Imported media: " + selectedClip.fileName : "Select a clip on the timeline to edit its properties."}</div></div> : <div className="empty-inspector">Select a clip to inspect it.</div>}
             </section>
           </div>
 
@@ -276,7 +298,7 @@ function App() {
             <div className="timeline-toolbar"><div className="timeline-title"><span>TIMELINE</span><span className="muted">{clips.length} clips{analysisResults ? " · AI template loaded" : ""}</span></div><div className="edit-tools"><button title="Split selected clip at playhead" onClick={splitSelected}><Scissors size={16} /> Split</button><button title="Move clip earlier" onClick={() => nudgeSelected(-0.5)}><ChevronLeft size={16} /></button><button title="Move clip later" onClick={() => nudgeSelected(0.5)}><ChevronRight size={16} /></button><button title="Delete selected clip" onClick={deleteSelected}><Trash2 size={16} /></button><span className="tool-divider" /><button title="Zoom out" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}><ZoomOut size={16} /></button><span className="zoom-label">{Math.round(zoom * 100)}%</span><button title="Zoom in" onClick={() => setZoom(Math.min(2, zoom + 0.25))}><ZoomIn size={16} /></button></div></div>
             <div className="timeline-scroll"><div className="timeline-inner" style={{ width: 176 + totalDuration * pixelsPerSecond }}>
               <div className="ruler-row"><div className="track-label ruler-label"><MousePointer2 size={14} /> Time</div><div className="ruler" onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); const nextTime = Math.max(0, Math.min(totalDuration, (e.clientX - rect.left) / pixelsPerSecond)); setPlayhead(nextTime); const active = clips.find((clip) => clip.mediaUrl && nextTime >= clip.start && nextTime < clip.start + clip.duration); if (active) { if (selected !== active.id) setSelected(active.id); if (videoRef.current) videoRef.current.currentTime = Math.max(0, (active.sourceIn || 0) + nextTime - active.start); } }}>{ticks.map((tick) => <div key={tick} className="tick" style={{ left: tick * pixelsPerSecond }}><span>{formatTime(tick)}</span></div>)}</div></div>
-              {["V1", "V2", "A1"].map((track) => <div className="track-row" key={track}><div className="track-label"><strong>{track}</strong><span>{track.startsWith("A") ? <AudioLines size={15} /> : <Film size={15} />}</span></div><div className={"track-lane " + (track.startsWith("A") ? "audio-lane" : "")}>{clips.filter((clip) => clip.track === track).map((clip) => <button key={clip.id} className={"clip-block " + clip.color + (selected === clip.id ? " selected" : "")} style={{ left: clip.start * pixelsPerSecond, width: Math.max(38, clip.duration * pixelsPerSecond) }} onClick={() => { setSelected(clip.id); setNotice("Selected " + clip.name); }} title={clip.name + " · " + clip.duration.toFixed(2) + " sec"}><span className="clip-icon">{track.startsWith("A") ? <AudioLines size={13} /> : <Film size={13} />}</span><span className="clip-name">{clip.name}</span><span className="clip-duration">{clip.duration.toFixed(1)}s</span></button>)}</div></div>)}
+              {["V1", "V2", "A1"].map((track) => <div className="track-row" key={track}><div className="track-label"><strong>{track}</strong><span>{track.startsWith("A") ? <AudioLines size={15} /> : <Film size={15} />}</span></div><div className={"track-lane " + (track.startsWith("A") ? "audio-lane" : "")}>{clips.filter((clip) => clip.track === track).map((clip) => <button key={clip.id} className={"clip-block " + clip.color + (selected === clip.id ? " selected" : "")} style={{ left: clip.start * pixelsPerSecond, width: Math.max(38, clip.duration * pixelsPerSecond) }} onPointerDown={(e) => beginClipDrag(e, clip.id)} onClick={() => { setSelected(clip.id); setNotice("Selected " + clip.name); }} title={clip.name + " · " + clip.duration.toFixed(2) + " sec"}><span className="clip-icon">{track.startsWith("A") ? <AudioLines size={13} /> : <Film size={13} />}</span><span className="clip-name">{clip.name}</span><span className="clip-duration">{clip.duration.toFixed(1)}s</span></button>)}</div></div>)}
               <div className="playhead-line" style={{ left: 176 + playhead * pixelsPerSecond }}><div className="playhead-cap" /></div>
             </div></div>
             <div className="timeline-footer"><span className="notice">{notice}</span><span>Playhead <strong>{formatTime(playhead)}</strong></span><button onClick={() => addClip("A1")}><Plus size={14} /> Add audio track clip</button></div>
