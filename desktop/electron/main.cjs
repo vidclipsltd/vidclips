@@ -1,14 +1,22 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, protocol, net } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const { randomUUID } = require("node:crypto");
+
+protocol.registerSchemesAsPrivileged([{ scheme: "vidclips-media", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
+const mediaPaths = new Map();
+function registerMediaPath(filePath) { const id = randomUUID(); mediaPaths.set(id, filePath); return "vidclips-media://asset/" + id; }
 
 const videoFilters = [{ name: "Video files", extensions: ["mp4", "m4v", "mov", "webm", "mkv", "avi", "ogv", "mpeg", "mpg"] }, { name: "All files", extensions: ["*"] }];
 
 ipcMain.handle("vidclips:open-media", async () => {
   const result = await dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: videoFilters });
   if (result.canceled) return [];
-  return result.filePaths.map((filePath) => ({ path: filePath, name: path.basename(filePath), url: require("node:url").pathToFileURL(filePath).href }));
+  return result.filePaths.map((filePath) => ({ path: filePath, name: path.basename(filePath), url: registerMediaPath(filePath) }));
 });
+
+ipcMain.handle("vidclips:media-url", async (_event, filePath) => registerMediaPath(filePath));
 
 ipcMain.handle("vidclips:save-project", async (_event, project) => {
   const result = await dialog.showSaveDialog({ defaultPath: (project?.projectName || "Untitled project").replace(/[<>:"/\\|?*]/g, "-") + ".vidclips.json", filters: [{ name: "VidClips Project", extensions: ["vidclips.json", "json"] }] });
@@ -45,6 +53,12 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  protocol.handle("vidclips-media", (request) => {
+    const id = new URL(request.url).pathname.replace(/^\\//, "");
+    const filePath = mediaPaths.get(id);
+    if (!filePath) return new Response("Media reference expired. Reopen or re-import the source file.", { status: 404 });
+    return net.fetch(pathToFileURL(filePath).href);
+  });
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
