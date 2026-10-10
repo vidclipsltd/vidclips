@@ -12,6 +12,64 @@ const videoFilters = [{ name: "Video files", extensions: ["mp4", "m4v", "mov", "
 
 
 const BACKEND_URL = "https://vidclips-xf5z.onrender.com";
+
+const { spawn } = require("node:child_process");
+const ffmpegPackage = require("ffmpeg-static");
+const ffprobePackage = require("ffprobe-static");
+function binaryPath(name, developmentPath) {
+  return app.isPackaged ? path.join(process.resourcesPath, name + ".exe") : developmentPath;
+}
+function runBinary(binary, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, args, { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); });
+    child.on("error", reject);
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr || binary + " exited with code " + code)));
+  });
+}
+ipcMain.handle("vidclips:export-mp4", async (_event, project) => {
+  const clips = (Array.isArray(project?.clips) ? project.clips : [])
+    .filter((clip) => clip.track === "V1" && clip.mediaPath && Number(clip.duration) > 0)
+    .sort((a, b) => Number(a.start) - Number(b.start));
+  if (!clips.length) throw new Error("Add at least one imported video clip to track V1 before exporting.");
+  const save = await dialog.showSaveDialog({ defaultPath: (project.projectName || "VidClips export").replace(/[<>:"/\\|?*]/g, "-") + ".mp4", filters: [{ name: "MP4 video", extensions: ["mp4"] }] });
+  if (save.canceled || !save.filePath) return { canceled: true };
+  const ffmpeg = binaryPath("ffmpeg", ffmpegPackage);
+  const ffprobe = binaryPath("ffprobe", ffprobePackage.path);
+  const args = ["-y"];
+  for (const clip of clips) {
+    if (!await fs.stat(clip.mediaPath).then(() => true).catch(() => false)) throw new Error("Source file not found: " + clip.mediaPath);
+    args.push("-i", clip.mediaPath);
+  }
+  const filters = [];
+  const concatInputs = [];
+  for (let i = 0; i < clips.length; i++) {
+    const clip = clips[i];
+    const sourceIn = Math.max(0, Number(clip.sourceIn) || 0);
+    const duration = Math.max(0.05, Number(clip.duration));
+    filters.push("[" + i + ":v:0]trim=start=" + sourceIn + ":duration=" + duration + ",setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v" + i + "]");
+    let hasAudio = false;
+    try {
+      const probeArgs = ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", clip.mediaPath];
+      await runBinary(ffprobe, probeArgs);
+      const { stdout } = await new Promise((resolve, reject) => {
+        const child = spawn(ffprobe, probeArgs, { windowsHide: true });
+        let output = ""; child.stdout.on("data", (chunk) => output += chunk.toString());
+        child.on("error", reject); child.on("close", (code) => code === 0 ? resolve({ stdout: output }) : resolve({ stdout: "" });
+      });
+      hasAudio = Boolean(stdout.trim());
+    } catch {}
+    if (hasAudio) filters.push("[" + i + ":a:0]atrim=start=" + sourceIn + ":duration=" + duration + ",asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a" + i + "]");
+    else filters.push("anullsrc=r=48000:cl=stereo,atrim=duration=" + duration + "[a" + i + "]");
+    concatInputs.push("[v" + i + "][a" + i + "]");
+  }
+  filters.push(concatInputs.join("") + "concat=n=" + clips.length + ":v=1:a=1[outv][outa]");
+  args.push("-filter_complex", filters.join(";"), "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", save.filePath);
+  await runBinary(ffmpeg, args);
+  return { canceled: false, filePath: save.filePath, clips: clips.length };
+});
+
 ipcMain.handle("vidclips:analyze-video", async (_event, filePath) => {
   const stat = await fs.stat(filePath);
   const maxBytes = 120 * 1024 * 1024;
