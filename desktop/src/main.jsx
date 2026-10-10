@@ -13,6 +13,8 @@ function App() {
   const [selected, setSelected] = useState(null);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState("Untitled project");
   const [notice, setNotice] = useState("Desktop workspace ready");
@@ -148,6 +150,38 @@ function App() {
     } catch (error) { setNotice("Video import failed: " + error.message); }
   }
 
+  async function analyzeSelectedVideo() {
+    if (!selectedClip?.mediaPath || !window.vidclips?.analyzeVideo) {
+      setNotice("Select an imported desktop video before starting analysis.");
+      return;
+    }
+    setAnalyzing(true);
+    setNotice("Checking analysis backend and uploading video…");
+    try {
+      const result = await window.vidclips.analyzeVideo(selectedClip.mediaPath);
+      const template = result?.timeline?.template;
+      const sourceTrack = template?.tracks?.find((track) => track.type === "video");
+      const sourceCuts = sourceTrack?.clips || [];
+      if (!sourceCuts.length) throw new Error("Analysis finished, but no editable scene clips were returned.");
+      const original = selectedClip;
+      const sceneClips = sourceCuts.map((scene, index) => {
+        const sourceIn = Number(scene.source_start ?? scene.start ?? 0);
+        const sourceOut = Number(scene.source_end ?? scene.end ?? original.duration);
+        const duration = Math.max(0.05, sourceOut - sourceIn);
+        return { ...original, id: nextClipIdRef.current++, name: "AI Scene " + (index + 1), start: Number(scene.start ?? sourceIn), duration, sourceIn, sourceOut, color: index % 2 ? "teal" : "blue", aiGenerated: true };
+      });
+      setClips((items) => [...items.filter((clip) => clip.id !== original.id), ...sceneClips]);
+      setSelected(sceneClips[0]?.id ?? null);
+      setPlayhead(sceneClips[0]?.start ?? 0);
+      setAnalysisResults(template);
+      setNotice("AI analysis completed: " + sceneClips.length + " editable scene clips created. Job " + result.runId.slice(0, 8));
+    } catch (error) {
+      setNotice("Analysis failed: " + (error?.message || String(error)));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function openProject() {
     if (!window.vidclips?.openProject) { setNotice("Open project is available in the Windows desktop app."); return; }
     try {
@@ -173,7 +207,7 @@ function App() {
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Film size={19} /></div><span>VidClips</span><span className="desktop-tag">DESKTOP</span></div>
         <div className="project-title"><input aria-label="Project name" value={projectName} onChange={(e) => setProjectName(e.target.value)} /><span>Saved locally when exported</span></div>
-        <div className="top-actions"><button className="button quiet" onClick={openProject}><FolderOpen size={16} /> Open project</button><button className="button quiet" onClick={() => addClip("V1")}><Plus size={16} /> Add clip</button><button className="button primary" onClick={saveProject}><Save size={16} /> Save project</button></div>
+        <div className="top-actions"><button className="button quiet" onClick={openProject}><FolderOpen size={16} /> Open project</button><button className="button quiet" disabled={analyzing || !selectedClip?.mediaPath} onClick={analyzeSelectedVideo}>{analyzing ? "Analyzing…" : "AI Analyze"}</button><button className="button quiet" onClick={() => addClip("V1")}><Plus size={16} /> Add clip</button><button className="button primary" onClick={saveProject}><Save size={16} /> Save project</button></div>
       </header>
 
       <div className="workspace">
@@ -227,7 +261,7 @@ function App() {
           </div>
 
           <section className="timeline-panel">
-            <div className="timeline-toolbar"><div className="timeline-title"><span>TIMELINE</span><span className="muted">{clips.length} clips</span></div><div className="edit-tools"><button title="Split selected clip at playhead" onClick={splitSelected}><Scissors size={16} /> Split</button><button title="Move clip earlier" onClick={() => nudgeSelected(-0.5)}><ChevronLeft size={16} /></button><button title="Move clip later" onClick={() => nudgeSelected(0.5)}><ChevronRight size={16} /></button><button title="Delete selected clip" onClick={deleteSelected}><Trash2 size={16} /></button><span className="tool-divider" /><button title="Zoom out" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}><ZoomOut size={16} /></button><span className="zoom-label">{Math.round(zoom * 100)}%</span><button title="Zoom in" onClick={() => setZoom(Math.min(2, zoom + 0.25))}><ZoomIn size={16} /></button></div></div>
+            <div className="timeline-toolbar"><div className="timeline-title"><span>TIMELINE</span><span className="muted">{clips.length} clips{analysisResults ? " · AI template loaded" : ""}</span></div><div className="edit-tools"><button title="Split selected clip at playhead" onClick={splitSelected}><Scissors size={16} /> Split</button><button title="Move clip earlier" onClick={() => nudgeSelected(-0.5)}><ChevronLeft size={16} /></button><button title="Move clip later" onClick={() => nudgeSelected(0.5)}><ChevronRight size={16} /></button><button title="Delete selected clip" onClick={deleteSelected}><Trash2 size={16} /></button><span className="tool-divider" /><button title="Zoom out" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}><ZoomOut size={16} /></button><span className="zoom-label">{Math.round(zoom * 100)}%</span><button title="Zoom in" onClick={() => setZoom(Math.min(2, zoom + 0.25))}><ZoomIn size={16} /></button></div></div>
             <div className="timeline-scroll"><div className="timeline-inner" style={{ width: 176 + totalDuration * pixelsPerSecond }}>
               <div className="ruler-row"><div className="track-label ruler-label"><MousePointer2 size={14} /> Time</div><div className="ruler" onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); const nextTime = Math.max(0, Math.min(totalDuration, (e.clientX - rect.left) / pixelsPerSecond)); setPlayhead(nextTime); const active = clips.find((clip) => clip.mediaUrl && nextTime >= clip.start && nextTime < clip.start + clip.duration); if (active) { if (selected !== active.id) setSelected(active.id); if (videoRef.current) videoRef.current.currentTime = Math.max(0, (active.sourceIn || 0) + nextTime - active.start); } }}>{ticks.map((tick) => <div key={tick} className="tick" style={{ left: tick * pixelsPerSecond }}><span>{formatTime(tick)}</span></div>)}</div></div>
               {["V1", "V2", "A1"].map((track) => <div className="track-row" key={track}><div className="track-label"><strong>{track}</strong><span>{track.startsWith("A") ? <AudioLines size={15} /> : <Film size={15} />}</span></div><div className={"track-lane " + (track.startsWith("A") ? "audio-lane" : "")}>{clips.filter((clip) => clip.track === track).map((clip) => <button key={clip.id} className={"clip-block " + clip.color + (selected === clip.id ? " selected" : "")} style={{ left: clip.start * pixelsPerSecond, width: Math.max(38, clip.duration * pixelsPerSecond) }} onClick={() => { setSelected(clip.id); setNotice("Selected " + clip.name); }} title={clip.name + " · " + clip.duration.toFixed(2) + " sec"}><span className="clip-icon">{track.startsWith("A") ? <AudioLines size={13} /> : <Film size={13} />}</span><span className="clip-name">{clip.name}</span><span className="clip-duration">{clip.duration.toFixed(1)}s</span></button>)}</div></div>)}
