@@ -11,8 +11,6 @@ function registerMediaPath(filePath) { const id = randomUUID(); mediaPaths.set(i
 const videoFilters = [{ name: "Video files", extensions: ["mp4", "m4v", "mov", "webm", "mkv", "avi", "ogv", "mpeg", "mpg"] }, { name: "All files", extensions: ["*"] }];
 
 
-const BACKEND_URL = "https://vidclips-xf5z.onrender.com";
-
 const { spawn } = require("node:child_process");
 const ffmpegPackage = require("ffmpeg-static");
 const ffprobePackage = require("ffprobe-static");
@@ -20,12 +18,19 @@ function binaryPath(name, developmentPath) {
   return app.isPackaged ? path.join(process.resourcesPath, name + ".exe") : developmentPath;
 }
 function runBinary(binary, args) {
+  return runBinaryOutput(binary, args).then(() => undefined);
+}
+function runBinaryOutput(binary, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { windowsHide: true });
     let stderr = "";
-    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-12000); });
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk.toString()).slice(-12000); });
+    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-20000); });
     child.on("error", reject);
-    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr || binary + " exited with code " + code)));
+    child.on("close", (code) => code === 0
+      ? resolve({ stdout, stderr })
+      : reject(new Error(stderr || binary + " exited with code " + code)));
   });
 }
 ipcMain.handle("vidclips:export-mp4", async (_event, project) => {
@@ -55,13 +60,8 @@ ipcMain.handle("vidclips:export-mp4", async (_event, project) => {
     let hasAudio = false;
     try {
       const probeArgs = ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", clip.mediaPath];
-      await runBinary(ffprobe, probeArgs);
-      const { stdout } = await new Promise((resolve, reject) => {
-        const child = spawn(ffprobe, probeArgs, { windowsHide: true });
-        let output = ""; child.stdout.on("data", (chunk) => output += chunk.toString());
-        child.on("error", reject); child.on("close", (code) => code === 0 ? resolve({ stdout: output }) : resolve({ stdout: "" });
-      });
-      hasAudio = Boolean(stdout.trim());
+      const probe = await runBinaryOutput(ffprobe, probeArgs);
+      hasAudio = Boolean(probe.stdout.trim());
     } catch {}
     if (hasAudio) filters.push("[" + i + ":a:0]atrim=start=" + sourceIn + ":duration=" + duration + ",asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a" + i + "]");
     else filters.push("anullsrc=r=48000:cl=stereo,atrim=duration=" + duration + "[a" + i + "]");
@@ -74,39 +74,76 @@ ipcMain.handle("vidclips:export-mp4", async (_event, project) => {
 });
 
 ipcMain.handle("vidclips:analyze-video", async (_event, filePath) => {
-  const stat = await fs.stat(filePath);
-  const maxBytes = 120 * 1024 * 1024;
-  if (stat.size > maxBytes) throw new Error("This video is " + (stat.size / 1024 / 1024).toFixed(0) + " MB. The hosted free-tier analyzer is limited to 120 MB per upload; use a shorter/smaller video.");
-  const healthResponse = await fetch(BACKEND_URL + "/health", { signal: AbortSignal.timeout(20000) });
-  if (!healthResponse.ok) throw new Error("Analysis backend health check failed (HTTP " + healthResponse.status + ").");
-  const health = await healthResponse.json();
-  if (health.status !== "ok") throw new Error("Analysis backend is not ready.");
-  const bytes = await fs.readFile(filePath);
-  const form = new FormData();
-  form.append("file", new Blob([bytes]), path.basename(filePath));
-  let submit;
-  try {
-    submit = await fetch(BACKEND_URL + "/jobs", { method: "POST", body: form, signal: AbortSignal.timeout(180000) });
-  } catch (error) { throw new Error("Could not upload the video to the analysis backend: " + error.message); }
-  if (!submit.ok) throw new Error("Analysis job submission failed (HTTP " + submit.status + "): " + (await submit.text()).slice(0, 500));
-  const job = await submit.json();
-  if (!job.run_id) throw new Error("The backend did not return a run_id.");
-  for (let attempt = 0; attempt < 180; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    let response;
-    try { response = await fetch(BACKEND_URL + "/jobs/" + encodeURIComponent(job.run_id), { signal: AbortSignal.timeout(20000) }); }
-    catch (error) { if (attempt < 179) continue; throw new Error("Could not check analysis status: " + error.message); }
-    if (response.status === 404) throw new Error("The analysis job expired or the free service restarted. Please submit the analysis again.");
-    if (!response.ok) throw new Error("Analysis status check failed (HTTP " + response.status + ").");
-    const status = await response.json();
-    if (status.status === "failed") throw new Error(status.error || "The analysis job failed. The free backend may have run out of memory.");
-    if (status.status === "completed") {
-      const timelineResponse = await fetch(BACKEND_URL + "/outputs/metadata/" + encodeURIComponent(job.run_id) + "/timeline.json", { signal: AbortSignal.timeout(30000) });
-      if (!timelineResponse.ok) throw new Error("Analysis completed, but its timeline output could not be downloaded (HTTP " + timelineResponse.status + ").");
-      return { runId: job.run_id, timeline: await timelineResponse.json(), job: status };
-    }
+  if (!filePath || typeof filePath !== "string") throw new Error("Select a valid local video file first.");
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) throw new Error("The selected video file could not be found.");
+  const ffmpeg = binaryPath("ffmpeg", ffmpegPackage);
+  const ffprobe = binaryPath("ffprobe", ffprobePackage.path);
+
+  // All analysis happens on this PC. FFmpeg's scene-change detector is CPU-based
+  // and does not upload, transmit, or otherwise send the source video anywhere.
+  const probe = await runBinaryOutput(ffprobe, [
+    "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
+    "-of", "json", filePath
+  ]);
+  let mediaInfo;
+  try { mediaInfo = JSON.parse(probe.stdout); }
+  catch { throw new Error("Could not read this video's metadata. Try an MP4 or MOV file."); }
+  const duration = Number(mediaInfo?.format?.duration);
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error("The video has no readable duration.");
+  const videoStream = (mediaInfo.streams || []).find((stream) => stream.codec_type === "video");
+  if (!videoStream) throw new Error("The selected file does not contain a video stream.");
+
+  const detection = await runBinaryOutput(ffmpeg, [
+    "-hide_banner", "-i", filePath, "-an",
+    "-vf", "select='gt(scene,0.30)',showinfo",
+    "-vsync", "vfr", "-f", "null", "-"
+  ]);
+  const timestamps = [];
+  const pattern = /pts_time:\s*([0-9]+(?:\.[0-9]+)?)/g;
+  let match;
+  while ((match = pattern.exec(detection.stderr)) !== null) {
+    const time = Number(match[1]);
+    if (Number.isFinite(time) && time > 0.15 && time < duration - 0.15) timestamps.push(time);
   }
-  throw new Error("Analysis is taking longer than 9 minutes. The job may still be running; check the backend before resubmitting.");
+  const boundaries = [0, ...[...new Set(timestamps.map((time) => Number(time.toFixed(3))))].sort((a, b) => a - b), duration];
+  const sceneClips = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const sourceStart = boundaries[i];
+    const sourceEnd = boundaries[i + 1];
+    if (sourceEnd - sourceStart < 0.08) continue;
+    sceneClips.push({
+      id: "local-scene-" + (i + 1),
+      name: "Scene " + (sceneClips.length + 1),
+      start: sourceStart,
+      source_start: sourceStart,
+      source_end: sourceEnd,
+      duration: sourceEnd - sourceStart,
+      confidence: i === 0 ? 1 : 0.7
+    });
+  }
+  if (!sceneClips.length) sceneClips.push({
+    id: "local-scene-1", name: "Scene 1", start: 0, source_start: 0,
+    source_end: duration, duration, confidence: 1
+  });
+  return {
+    local: true,
+    runId: "local-" + Date.now(),
+    analysis: {
+      duration,
+      width: Number(videoStream.width) || null,
+      height: Number(videoStream.height) || null,
+      sceneCount: sceneClips.length,
+      method: "FFmpeg CPU scene-change detection",
+      uploaded: false
+    },
+    timeline: {
+      template: {
+        name: "Local AI Scene Analysis",
+        tracks: [{ type: "video", clips: sceneClips }]
+      }
+    }
+  };
 });
 
 ipcMain.handle("vidclips:open-media", async () => {
