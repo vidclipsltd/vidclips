@@ -2,6 +2,9 @@ name: Desktop Windows build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/audio-playback-analyser
 
 jobs:
   build:
@@ -15,7 +18,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Check Python AI pipeline syntax
-        run: python -m compileall -q ../app ../scripts/desktop_analyze_video.py
+        run: python -m compileall -q ../app ../scripts/desktop_analyze_video.py ../scripts/desktop_analyze_audio.py
       - uses: actions/setup-node@v4
         with:
           node-version: 20

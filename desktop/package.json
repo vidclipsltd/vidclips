@@ -75,6 +75,10 @@
       {
         "from": "../docs/LIMITATIONS.md",
         "to": "vidclips-ai/docs/LIMITATIONS.md"
+      },
+      {
+        "from": "../scripts/desktop_analyze_audio.py",
+        "to": "vidclips-ai/scripts/desktop_analyze_audio.py"
       }
     ],
     "executableName": "VidClips"

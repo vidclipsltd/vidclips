@@ -51,6 +51,14 @@ npm run dist:win
 
 The installer is generated under `desktop/release/`. The Windows installer workflow is **manual-only**: it does not build on every push. Trigger it from GitHub Actions with **Run workflow**, or use the Colab notebook at `tools/VidClips_Windows_Build.ipynb` to request a build and download the installer artifact. The notebook needs a GitHub token with Actions read/write and repository contents read permissions.
 
+## Audio playback and Audio Analyser
+
+The desktop timeline supports importing local audio-only media and plays A1 audio clips against the shared timeline playhead. Imported video receives a separate linked A1 audio clip so its audio can remain on the timeline when the video clip is deleted. Audio clips have independent volume and mute controls, and overlapping clips can play together.
+
+Use **Audio Analyse** on an imported desktop media clip to run the local CPU analysis entry point. It extracts audio with FFmpeg, estimates waveform volume/silence/tempo/beats, runs Whisper transcription with word timestamps, and creates generic sound-transient candidates. When Demucs is installed, the analyser also attempts local vocals/drums/bass/other stem separation; first use can download a large model and be slow on CPU.
+
+Important limits: transient candidates are not reliable semantic labels such as footsteps or explosions. The current Demucs output is four music/vocal-oriented stems, not dedicated speech/music/SFX tracks. Timeline audio playback is implemented, but MP4 export still needs a full timeline-aware audio mix to reproduce all independent clips and overlaps exactly.
+
 ## Current capabilities and honest limitations
 
 - Native Windows file picker and HTML video preview for codecs supported by Electron/Chromium.

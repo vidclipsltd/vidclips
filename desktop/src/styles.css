@@ -15,3 +15,27 @@
 
 /* Explicit AI-detected cut boundaries on the main video track. */
 .scene-cut-marker{position:absolute;top:0;bottom:0;width:2px;background:#ffd166;box-shadow:0 0 0 1px #10111499;z-index:3;pointer-events:none}
+
+/* Audio elements are controlled by the timeline transport, not standalone player controls. */
+.preview-screen audio{display:none}
+
+
+/* First-run profile and responsive editor layout. */
+.login-screen{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% 15%,#29213f 0%,#141419 42%,#0d0e11 100%)}
+.login-card{width:min(100%,440px);padding:34px;border:1px solid #383342;border-radius:18px;background:#18191f;box-shadow:0 28px 90px #0007;display:flex;flex-direction:column;gap:16px}
+.login-brand{margin-bottom:10px}
+.login-eyebrow{font-size:10px;font-weight:700;letter-spacing:1.8px;color:#b5a0ff}
+.login-card h1{font:700 30px 'Space Grotesk',sans-serif;letter-spacing:-.8px;margin:0;color:#f5f2ff}
+.login-card p{margin:0 0 4px;color:#a1a0ad;line-height:1.65;font-size:13px}
+.login-card label{display:flex;flex-direction:column;gap:7px;color:#c4c1d0;font-size:12px}
+.login-card input{width:100%;padding:12px 13px;border-radius:8px;border:1px solid #393944;background:#101116;color:#f1eff8;outline:none}
+.login-card input:focus{border-color:#9b7aff;box-shadow:0 0 0 3px #9b7aff22}
+.login-submit{justify-content:center;margin-top:5px;padding:12px}
+.login-card small{color:#777886;line-height:1.5;font-size:10px;text-align:center}
+.preview-panel{display:flex;flex-direction:column;min-height:0}
+.preview-panel>.panel-heading{height:40px;flex:0 0 40px;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+.preview-screen{height:auto;flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.video-preview{max-width:100%;max-height:100%;object-fit:contain}
+.preview-art{flex:0 1 auto;max-height:100%}
+@media(max-width:1150px){.topbar{gap:12px;padding:0 12px}.top-actions{gap:4px}.button{padding:8px}.upper-workspace{grid-template-columns:minmax(0,1fr) 245px}.sidebar{width:195px}}
+@media(max-height:760px){.app-shell{min-height:580px}.timeline-panel{height:270px}.upper-workspace{min-height:190px}.main-area{padding:10px;gap:9px}.preview-screen{padding:8px}}

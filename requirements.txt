@@ -24,6 +24,8 @@ librosa>=0.10
 soundfile>=0.12
 openai-whisper>=20231117
 pyannote.audio>=3.1     # speaker diarization (requires a HuggingFace token for gated models)
+demucs>=4.0.1           # optional local CPU music/vocal stem separation
+transformers>=4.41       # local AudioSet sound-event classification
 
 # --- Deep learning runtime ---
 torch>=2.3
